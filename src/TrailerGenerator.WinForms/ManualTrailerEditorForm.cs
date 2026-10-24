@@ -130,8 +130,8 @@ public sealed class ManualTrailerEditorForm : Form
         _initialVolume = Math.Clamp(defaultPreviewVolume, 0, 100);
 
         Width = 1140;
-        Height = 840;
-        MinimumSize = new Size(960, 740);
+        Height = 820;
+        MinimumSize = new Size(960, 680);
         StartPosition = FormStartPosition.CenterParent;
         Text = $"Manual Trailer Editor - {_videoEntry.FileName}";
         Font = new Font("Segoe UI", 9.5F);
@@ -150,13 +150,13 @@ public sealed class ManualTrailerEditorForm : Form
             Padding = new Padding(12)
         };
 
-        // Heights: Header (34px), Video Preview (55% responsive), Transport (38px), Timelines (204px), Grid & Controls (45%), Actions (44px)
+        // Heights: Header (34px), Video Preview (50% responsive), Transport (38px), Timelines (200px), Grid & Controls (50%), Actions (50px)
         rootLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));  // 0: Header
-        rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 55));   // 1: Video Viewport (responsive scaling with window)
+        rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));   // 1: Video Preview
         rootLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));  // 2: Transport bar
-        rootLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 204)); // 3: Stacked Timelines
-        rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 45));   // 4: Segments Grid & Controls (shares height)
-        rootLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));  // 5: Action buttons
+        rootLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 200)); // 3: Stacked Timelines
+        rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50));   // 4: Segments Grid & Controls
+        rootLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));  // 5: Action buttons
 
         // -------------------------------------------------------------
         // Row 0: Top Header Strip
@@ -573,17 +573,21 @@ public sealed class ManualTrailerEditorForm : Form
             RowCount = 1,
             Margin = new Padding(0)
         };
-        actionPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); // Left: Reset to Auto
+        actionPanel.ColumnStyles.Clear();
+        actionPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180)); // Left: Reset to Auto
         actionPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));  // Middle: Saved Configs
         actionPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 270)); // Right: Save / Cancel
 
-        _btnResetToAuto.Text = "🔄 Reset to Auto Mode";
-        _btnResetToAuto.Dock = DockStyle.Left;
-        _btnResetToAuto.AutoSize = true;
-        _btnResetToAuto.MinimumSize = new Size(185, 36);
+        _btnResetToAuto.Text = "Reset to Auto Mode";
+        _btnResetToAuto.Dock = DockStyle.Fill;
         _btnResetToAuto.Height = 36;
-        _btnResetToAuto.Padding = new Padding(8, 0, 8, 0);
-        _btnResetToAuto.BackColor = Color.FromArgb(240, 240, 245);
+        _btnResetToAuto.Margin = new Padding(2, 2, 6, 2);
+        _btnResetToAuto.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+        _btnResetToAuto.BackColor = Color.FromArgb(254, 240, 240);
+        _btnResetToAuto.ForeColor = Color.FromArgb(170, 30, 30);
+        _btnResetToAuto.FlatStyle = FlatStyle.Flat;
+        _btnResetToAuto.FlatAppearance.BorderColor = Color.FromArgb(220, 130, 130);
+        _btnResetToAuto.FlatAppearance.BorderSize = 1;
 
         var savedConfigsPanel = new FlowLayoutPanel
         {
@@ -640,7 +644,7 @@ public sealed class ManualTrailerEditorForm : Form
         rightActions.Controls.Add(_btnCancel);
 
         // Configure action tooltips
-        _actionToolTip.SetToolTip(_btnResetToAuto, "Discards all manual segments and resets this video to automatic trailer generation mode.");
+        _actionToolTip.SetToolTip(_btnResetToAuto, "Discards all manual segment customizations and resets this video to automatic trailer generation mode.");
         _actionToolTip.SetToolTip(_btnSaveManual, "Saves the current manual segments as this video's custom trailer configuration.");
         _actionToolTip.SetToolTip(_btnApplySavedConfig, "Applies the selected saved configuration preset to this video.");
         _actionToolTip.SetToolTip(_btnCancel, "Closes the editor without saving any changes.");
