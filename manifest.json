@@ -1,4 +1,4 @@
-[
+﻿[
   {
     "guid": "9b7e4c12-6d38-4f2a-8c1e-5a9d7b3e1f40",
     "name": "Custom Hover Trailer",
@@ -11,9 +11,9 @@
         "version": "1.1.0.0",
         "changelog": "Release 1.1.0.0: Local *-trailer.mp4 playback, YouTube stream fallback, web client card injection, and hover customization settings.",
         "targetAbi": "10.11.0.0",
-        "sourceUrl": "https://github.com/ionuttheking-blip/CustomHoverTrailerPluginForJellyfin/releases/download/v1.1.0.0/CustomHoverTrailer_1.1.0.0.zip",
-        "checksum": "29e9a946226904f33b255aa617b05614",
-        "timestamp": "2026-10-24T18:00:00Z"
+        "sourceUrl": "https://raw.githubusercontent.com/ionuttheking-blip/CustomHoverTrailerPluginForJellyfin/main/releases/CustomHoverTrailer_1.1.0.0.zip",
+        "checksum": "594229f787139137e7c6514dc570d6a3",
+        "timestamp": "2026-10-24T16:01:06Z"
       }
     ]
   }

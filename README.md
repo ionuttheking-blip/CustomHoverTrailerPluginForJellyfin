@@ -107,6 +107,13 @@ If you are developing or running Jellyfin locally on Windows:
 2. Copy `Jellyfin.Plugin.CustomHoverTrailer.dll` and `YoutubeExplode.dll` from `bin/Release/net9.0/` into your Jellyfin server's `plugins/CustomHoverTrailer/` directory.
 3. Restart the Jellyfin service.
 
+#### Packaging Releases Locally (Zero GitHub Actions Minutes)
+To compile and package a release without using GitHub Actions minutes:
+```powershell
+.\scripts\package-release.ps1
+```
+This script compiles the plugin in Release mode, creates `releases/CustomHoverTrailer_<version>.zip`, computes the MD5 checksum, and updates `manifest.json`. Commit and push to publish the new release instantly!
+
 ---
 
 ## 2. Desktop Companion Studio (Trailer Generator)
