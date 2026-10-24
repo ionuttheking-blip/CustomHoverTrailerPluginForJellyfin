@@ -3,7 +3,7 @@ using TrailerGenerator.WinForms.Services;
 namespace TrailerGenerator.WinForms;
 
 /// <summary>
-/// Modal dialog for configuring application-wide settings and the background folder watcher engine.
+/// Modal dialog for configuring application-wide settings, background folder watching, and scheduled scans.
 /// </summary>
 public sealed class SettingsForm : Form
 {
@@ -11,6 +11,15 @@ public sealed class SettingsForm : Form
     private readonly CheckBox _autoGenOnNewVideoCheckBox = new();
     private readonly NumericUpDown _autoGenDelayNumeric = new();
     private readonly NumericUpDown _defaultVolumeNumeric = new();
+
+    // Scheduler controls
+    private readonly CheckBox _enableScheduleCheckBox = new();
+    private readonly ComboBox _scheduleFrequencyComboBox = new();
+    private readonly ComboBox _scheduleDayComboBox = new();
+    private readonly NumericUpDown _scheduleHourNumeric = new();
+    private readonly NumericUpDown _scheduleMinuteNumeric = new();
+    private readonly Label _scheduleSummaryLabel = new();
+
     private readonly Button _btnOk = new();
     private readonly Button _btnCancel = new();
 
@@ -18,10 +27,10 @@ public sealed class SettingsForm : Form
     {
         ArgumentNullException.ThrowIfNull(state);
 
-        Text = "Application & Auto-Watcher Settings";
+        Text = "Application & Automation Settings";
         StartPosition = FormStartPosition.CenterParent;
-        Width = 520;
-        Height = 440;
+        Width = 560;
+        Height = 620;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -37,11 +46,12 @@ public sealed class SettingsForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 3,
+            RowCount = 4,
             Padding = new Padding(14)
         };
-        mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 200)); // Watcher group
-        mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 110)); // Editor group
+        mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 165)); // Watcher group
+        mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 220)); // Scheduler group
+        mainLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 85));  // Editor group
         mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));  // Buttons
 
         // 1. Folder Monitoring Group
@@ -60,9 +70,9 @@ public sealed class SettingsForm : Form
         };
         watcherLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 72));
         watcherLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 28));
+        watcherLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        watcherLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         watcherLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-        watcherLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-        watcherLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 45));
 
         _enableFolderWatcherCheckBox.Text = "Enable Folder Watcher (Monitor folders for new videos)";
         _enableFolderWatcherCheckBox.AutoSize = true;
@@ -98,7 +108,137 @@ public sealed class SettingsForm : Form
         watcherLayout.Controls.Add(_autoGenDelayNumeric, 1, 2);
         watcherGroup.Controls.Add(watcherLayout);
 
-        // 2. Editor & Preview Defaults Group
+        // 2. Scheduler Group
+        var scheduleGroup = new GroupBox
+        {
+            Text = "Scheduled Automated Library Check",
+            Dock = DockStyle.Fill,
+            Padding = new Padding(12)
+        };
+
+        var scheduleLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 5
+        };
+        scheduleLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
+        scheduleLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
+        scheduleLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34)); // Enable Checkbox
+        scheduleLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34)); // Frequency
+        scheduleLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34)); // Day of week
+        scheduleLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34)); // Time of day
+        scheduleLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34)); // Summary label
+
+        _enableScheduleCheckBox.Text = "Enable Scheduled Library Scan & Trailer Generation";
+        _enableScheduleCheckBox.AutoSize = true;
+        _enableScheduleCheckBox.Checked = state.EnableScheduledScan;
+        _enableScheduleCheckBox.Dock = DockStyle.Fill;
+
+        var freqLabel = new Label
+        {
+            Text = "Scan Frequency:",
+            AutoSize = true,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        _scheduleFrequencyComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+        _scheduleFrequencyComboBox.Items.AddRange(["Weekly", "Daily"]);
+        _scheduleFrequencyComboBox.SelectedItem = string.Equals(state.ScheduleFrequency, "Daily", StringComparison.OrdinalIgnoreCase) ? "Daily" : "Weekly";
+        _scheduleFrequencyComboBox.Width = 140;
+        _scheduleFrequencyComboBox.Anchor = AnchorStyles.Left;
+
+        var dayLabel = new Label
+        {
+            Text = "Day of the Week:",
+            AutoSize = true,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        _scheduleDayComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+        _scheduleDayComboBox.Items.AddRange(Enum.GetNames<DayOfWeek>());
+        _scheduleDayComboBox.SelectedItem = state.ScheduleDayOfWeek.ToString();
+        if (_scheduleDayComboBox.SelectedIndex < 0)
+        {
+            _scheduleDayComboBox.SelectedIndex = 1; // Monday default
+        }
+        _scheduleDayComboBox.Width = 140;
+        _scheduleDayComboBox.Anchor = AnchorStyles.Left;
+
+        var timeLabel = new Label
+        {
+            Text = "Execution Time (HH:MM):",
+            AutoSize = true,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        var timePanel = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            Margin = new Padding(0)
+        };
+
+        _scheduleHourNumeric.Minimum = 0;
+        _scheduleHourNumeric.Maximum = 23;
+        _scheduleHourNumeric.Value = Math.Clamp(state.ScheduleHour, 0, 23);
+        _scheduleHourNumeric.Width = 55;
+        _scheduleHourNumeric.Margin = new Padding(0, 3, 4, 3);
+
+        var colonLabel = new Label
+        {
+            Text = ":",
+            AutoSize = true,
+            Margin = new Padding(0, 6, 4, 3)
+        };
+
+        _scheduleMinuteNumeric.Minimum = 0;
+        _scheduleMinuteNumeric.Maximum = 59;
+        _scheduleMinuteNumeric.Value = Math.Clamp(state.ScheduleMinute, 0, 59);
+        _scheduleMinuteNumeric.Width = 55;
+        _scheduleMinuteNumeric.Margin = new Padding(0, 3, 6, 3);
+
+        var tzLabel = new Label
+        {
+            Text = "(24h local time)",
+            AutoSize = true,
+            ForeColor = SystemColors.GrayText,
+            Margin = new Padding(0, 6, 0, 3)
+        };
+
+        timePanel.Controls.Add(_scheduleHourNumeric);
+        timePanel.Controls.Add(colonLabel);
+        timePanel.Controls.Add(_scheduleMinuteNumeric);
+        timePanel.Controls.Add(tzLabel);
+
+        _scheduleSummaryLabel.AutoSize = true;
+        _scheduleSummaryLabel.Dock = DockStyle.Fill;
+        _scheduleSummaryLabel.TextAlign = ContentAlignment.MiddleLeft;
+        _scheduleSummaryLabel.Font = new Font(Font, FontStyle.Italic);
+        _scheduleSummaryLabel.ForeColor = Color.DarkSlateBlue;
+
+        _enableScheduleCheckBox.CheckedChanged += (_, _) => UpdateScheduleControlsState();
+        _scheduleFrequencyComboBox.SelectedIndexChanged += (_, _) => UpdateScheduleControlsState();
+        _scheduleDayComboBox.SelectedIndexChanged += (_, _) => UpdateScheduleSummary();
+        _scheduleHourNumeric.ValueChanged += (_, _) => UpdateScheduleSummary();
+        _scheduleMinuteNumeric.ValueChanged += (_, _) => UpdateScheduleSummary();
+
+        scheduleLayout.Controls.Add(_enableScheduleCheckBox, 0, 0);
+        scheduleLayout.SetColumnSpan(_enableScheduleCheckBox, 2);
+        scheduleLayout.Controls.Add(freqLabel, 0, 1);
+        scheduleLayout.Controls.Add(_scheduleFrequencyComboBox, 1, 1);
+        scheduleLayout.Controls.Add(dayLabel, 0, 2);
+        scheduleLayout.Controls.Add(_scheduleDayComboBox, 1, 2);
+        scheduleLayout.Controls.Add(timeLabel, 0, 3);
+        scheduleLayout.Controls.Add(timePanel, 1, 3);
+        scheduleLayout.Controls.Add(_scheduleSummaryLabel, 0, 4);
+        scheduleLayout.SetColumnSpan(_scheduleSummaryLabel, 2);
+        scheduleGroup.Controls.Add(scheduleLayout);
+
+        // 3. Editor & Preview Defaults Group
         var editorGroup = new GroupBox
         {
             Text = "Editor & Preview Defaults",
@@ -133,7 +273,7 @@ public sealed class SettingsForm : Form
         editorLayout.Controls.Add(_defaultVolumeNumeric, 1, 0);
         editorGroup.Controls.Add(editorLayout);
 
-        // 3. Button Bar
+        // 4. Button Bar
         var buttonPanel = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -159,12 +299,14 @@ public sealed class SettingsForm : Form
         CancelButton = _btnCancel;
 
         mainLayout.Controls.Add(watcherGroup, 0, 0);
-        mainLayout.Controls.Add(editorGroup, 0, 1);
-        mainLayout.Controls.Add(buttonPanel, 0, 2);
+        mainLayout.Controls.Add(scheduleGroup, 0, 1);
+        mainLayout.Controls.Add(editorGroup, 0, 2);
+        mainLayout.Controls.Add(buttonPanel, 0, 3);
 
         Controls.Add(mainLayout);
 
         UpdateWatcherControlsState();
+        UpdateScheduleControlsState();
     }
 
     private void UpdateWatcherControlsState()
@@ -172,6 +314,42 @@ public sealed class SettingsForm : Form
         bool watcherEnabled = _enableFolderWatcherCheckBox.Checked;
         _autoGenOnNewVideoCheckBox.Enabled = watcherEnabled;
         _autoGenDelayNumeric.Enabled = watcherEnabled;
+    }
+
+    private void UpdateScheduleControlsState()
+    {
+        bool scheduleEnabled = _enableScheduleCheckBox.Checked;
+        bool isWeekly = string.Equals(_scheduleFrequencyComboBox.SelectedItem?.ToString(), "Weekly", StringComparison.OrdinalIgnoreCase);
+
+        _scheduleFrequencyComboBox.Enabled = scheduleEnabled;
+        _scheduleDayComboBox.Enabled = scheduleEnabled && isWeekly;
+        _scheduleHourNumeric.Enabled = scheduleEnabled;
+        _scheduleMinuteNumeric.Enabled = scheduleEnabled;
+
+        UpdateScheduleSummary();
+    }
+
+    private void UpdateScheduleSummary()
+    {
+        if (!_enableScheduleCheckBox.Checked)
+        {
+            _scheduleSummaryLabel.Text = "Scheduled scans are currently disabled.";
+            return;
+        }
+
+        string freq = _scheduleFrequencyComboBox.SelectedItem?.ToString() ?? "Weekly";
+        int hour = (int)_scheduleHourNumeric.Value;
+        int minute = (int)_scheduleMinuteNumeric.Value;
+
+        if (string.Equals(freq, "Daily", StringComparison.OrdinalIgnoreCase))
+        {
+            _scheduleSummaryLabel.Text = $"Next run: Daily at {hour:D2}:{minute:D2}.";
+        }
+        else
+        {
+            string day = _scheduleDayComboBox.SelectedItem?.ToString() ?? "Monday";
+            _scheduleSummaryLabel.Text = $"Next run: Weekly on {day} at {hour:D2}:{minute:D2}.";
+        }
     }
 
     /// <summary>
@@ -185,5 +363,14 @@ public sealed class SettingsForm : Form
         state.AutoGenerateOnNewVideo = _autoGenOnNewVideoCheckBox.Checked;
         state.AutoGenerateDelaySeconds = (int)_autoGenDelayNumeric.Value;
         state.DefaultPreviewVolume = (int)_defaultVolumeNumeric.Value;
+
+        state.EnableScheduledScan = _enableScheduleCheckBox.Checked;
+        state.ScheduleFrequency = _scheduleFrequencyComboBox.SelectedItem?.ToString() ?? "Weekly";
+        if (Enum.TryParse<DayOfWeek>(_scheduleDayComboBox.SelectedItem?.ToString(), out var day))
+        {
+            state.ScheduleDayOfWeek = day;
+        }
+        state.ScheduleHour = (int)_scheduleHourNumeric.Value;
+        state.ScheduleMinute = (int)_scheduleMinuteNumeric.Value;
     }
 }
