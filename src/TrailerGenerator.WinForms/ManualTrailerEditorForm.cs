@@ -101,6 +101,7 @@ public sealed class ManualTrailerEditorForm : Form
     private readonly Button _btnApplySavedConfig = new();
     private readonly Button _btnSaveManual = new();
     private readonly Button _btnCancel = new();
+    private readonly ToolTip _actionToolTip = new();
 
     /// <summary>
     /// Gets whether the user successfully saved manual trailer segments.
@@ -547,14 +548,16 @@ public sealed class ManualTrailerEditorForm : Form
             RowCount = 1,
             Margin = new Padding(0)
         };
-        actionPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 260)); // Left: Reset to Auto
+        actionPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); // Left: Reset to Auto
         actionPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));  // Middle: Saved Configs
         actionPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 270)); // Right: Save / Cancel
 
-        _btnResetToAuto.Text = "Reset to Automatic (Overwrite Manual)";
+        _btnResetToAuto.Text = "🔄 Reset to Auto Mode";
         _btnResetToAuto.Dock = DockStyle.Left;
-        _btnResetToAuto.Width = 255;
+        _btnResetToAuto.AutoSize = true;
+        _btnResetToAuto.MinimumSize = new Size(185, 36);
         _btnResetToAuto.Height = 36;
+        _btnResetToAuto.Padding = new Padding(8, 0, 8, 0);
         _btnResetToAuto.BackColor = Color.FromArgb(240, 240, 245);
 
         var savedConfigsPanel = new FlowLayoutPanel
@@ -610,6 +613,12 @@ public sealed class ManualTrailerEditorForm : Form
 
         rightActions.Controls.Add(_btnSaveManual);
         rightActions.Controls.Add(_btnCancel);
+
+        // Configure action tooltips
+        _actionToolTip.SetToolTip(_btnResetToAuto, "Discards all manual segments and resets this video to automatic trailer generation mode.");
+        _actionToolTip.SetToolTip(_btnSaveManual, "Saves the current manual segments as this video's custom trailer configuration.");
+        _actionToolTip.SetToolTip(_btnApplySavedConfig, "Applies the selected saved configuration preset to this video.");
+        _actionToolTip.SetToolTip(_btnCancel, "Closes the editor without saving any changes.");
 
         actionPanel.Controls.Add(_btnResetToAuto, 0, 0);
         actionPanel.Controls.Add(savedConfigsPanel, 1, 0);
@@ -2000,12 +2009,14 @@ public sealed class ManualTrailerEditorForm : Form
 
         var confirm = MessageBox.Show(
             this,
-            $"Reset '{_videoEntry.FileName}' to Automatic detection mode? This will discard any manual segments.",
-            "Confirm Reset to Automatic",
+            "Are you sure you want to discard all manual segments and reset this video to Automatic generation mode?",
+            "Reset to Automatic Mode",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Question);
-
-        if (confirm != DialogResult.Yes) return;
+        if (confirm != DialogResult.Yes)
+        {
+            return;
+        }
 
         _videoEntry.IsManual = false;
         _videoEntry.ManualSegments.Clear();
@@ -2043,6 +2054,12 @@ public sealed class ManualTrailerEditorForm : Form
         {
             _formCts.Cancel();
             _formCts.Dispose();
+        }
+        catch { }
+
+        try
+        {
+            _actionToolTip.Dispose();
         }
         catch { }
 
