@@ -51,10 +51,15 @@ public sealed class ManualTrailerEditorForm : Form
     private readonly PictureBox _videoPreviewBox = new();
     private readonly Panel _trailerPreviewPanel = new();
     private readonly PictureBox _existingTrailerPreviewBox = new();
+    private readonly Button _btnPlayPauseTrailer = new();
+    private readonly CheckBox _chkMuteTrailer = new() { Text = "Mute Trailer", Checked = true, AutoSize = true, ForeColor = Color.LightGray };
     private readonly TrackBar _trailerScrubber = new();
     private readonly Label _lblTrailerTime = new();
     private double _trailerDurationSeconds;
     private CancellationTokenSource? _trailerScrubCts;
+    private CancellationTokenSource? _trailerPlaybackCts;
+    private bool _isTrailerPlaying;
+    private int _trailerFrameUpdateInFlight;
 
     // Transport controls
     private readonly Button _btnStepBack10 = new();
@@ -213,7 +218,7 @@ public sealed class ManualTrailerEditorForm : Form
         };
         trailerLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 22)); // Header
         trailerLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // Preview
-        trailerLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28)); // Scrubber & Time
+        trailerLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32)); // Scrubber & Time
 
         var lblTopTrailer = new Label
         {
@@ -232,13 +237,31 @@ public sealed class ManualTrailerEditorForm : Form
         var miniTransport = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 2,
+            ColumnCount = 4,
             RowCount = 1,
             Margin = new Padding(0),
             BackColor = Color.FromArgb(24, 24, 30)
         };
-        miniTransport.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         miniTransport.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
+        miniTransport.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        miniTransport.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        miniTransport.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 65));
+
+        _btnPlayPauseTrailer.Text = "▶ Play";
+        _btnPlayPauseTrailer.Width = 65;
+        _btnPlayPauseTrailer.Height = 26;
+        _btnPlayPauseTrailer.Font = new Font("Segoe UI", 8F);
+        _btnPlayPauseTrailer.Margin = new Padding(2, 2, 2, 2);
+        _btnPlayPauseTrailer.BackColor = Color.FromArgb(45, 45, 55);
+        _btnPlayPauseTrailer.ForeColor = Color.White;
+        _btnPlayPauseTrailer.FlatStyle = FlatStyle.Flat;
+
+        _chkMuteTrailer.Text = "Mute Trailer";
+        _chkMuteTrailer.Checked = true;
+        _chkMuteTrailer.AutoSize = true;
+        _chkMuteTrailer.ForeColor = Color.LightGray;
+        _chkMuteTrailer.Font = new Font("Segoe UI", 8F);
+        _chkMuteTrailer.Margin = new Padding(4, 5, 4, 2);
 
         _trailerScrubber.Dock = DockStyle.Fill;
         _trailerScrubber.Minimum = 0;
@@ -252,8 +275,10 @@ public sealed class ManualTrailerEditorForm : Form
         _lblTrailerTime.TextAlign = ContentAlignment.MiddleCenter;
         _lblTrailerTime.Font = new Font("Segoe UI", 8F);
 
-        miniTransport.Controls.Add(_trailerScrubber, 0, 0);
-        miniTransport.Controls.Add(_lblTrailerTime, 1, 0);
+        miniTransport.Controls.Add(_btnPlayPauseTrailer, 0, 0);
+        miniTransport.Controls.Add(_chkMuteTrailer, 1, 0);
+        miniTransport.Controls.Add(_trailerScrubber, 2, 0);
+        miniTransport.Controls.Add(_lblTrailerTime, 3, 0);
 
         trailerLayout.Controls.Add(lblTopTrailer, 0, 0);
         trailerLayout.Controls.Add(_existingTrailerPreviewBox, 0, 1);
@@ -687,11 +712,19 @@ public sealed class ManualTrailerEditorForm : Form
         _muteCheckBox.CheckedChanged += (s, e) => _isMuted = _muteCheckBox.Checked;
         _volumeTrackBar.ValueChanged += (s, e) => _lblVolume.Text = $"Vol: {_volumeTrackBar.Value}%";
         _chkCompareTrailer.CheckedChanged += async (s, e) => await HandleCompareTrailerCheckedChangedAsync();
+        _btnPlayPauseTrailer.Click += (s, e) => ToggleTrailerPlayback();
         _trailerScrubber.Scroll += (s, e) =>
         {
             double sec = _trailerScrubber.Value / 10.0;
             _lblTrailerTime.Text = FormatTimestamp(sec);
-            _ = RequestTrailerFrameAsync(sec, immediate: false);
+            if (_isTrailerPlaying)
+            {
+                StartTrailerPlayback(sec);
+            }
+            else
+            {
+                _ = RequestTrailerFrameAsync(sec, immediate: false);
+            }
         };
         _btnReanalyze.Click += async (s, e) => await HandleReanalyzeClickAsync();
 
@@ -864,6 +897,7 @@ public sealed class ManualTrailerEditorForm : Form
         }
         else
         {
+            StopTrailerPlayback();
             _previewSplitContainer.ColumnStyles[0].Width = 100f;
             _previewSplitContainer.ColumnStyles[1].Width = 0f;
         }
@@ -1047,7 +1081,7 @@ public sealed class ManualTrailerEditorForm : Form
         }
         else
         {
-            StartPlaybackFromCurrentTime(debounceMs: 0);
+            StartPlayback();
         }
     }
 
@@ -1067,6 +1101,8 @@ public sealed class ManualTrailerEditorForm : Form
         }
         catch { }
 
+        StopTrailerPlayback();
+
         Interlocked.Exchange(ref _uiFrameUpdateInFlight, 0);
 
         if (IsHandleCreated && !IsDisposed)
@@ -1074,6 +1110,405 @@ public sealed class ManualTrailerEditorForm : Form
             _btnPlayPause.Text = "▶ Play Preview";
             _btnPlayPause.BackColor = Color.FromArgb(40, 120, 65);
         }
+    }
+
+    public void ToggleTrailerPlayback()
+    {
+        if (_isTrailerPlaying)
+        {
+            StopTrailerPlayback();
+        }
+        else
+        {
+            StartTrailerPlayback();
+        }
+    }
+
+    public void StartTrailerPlayback(double? seekSec = null)
+    {
+        if (string.IsNullOrWhiteSpace(_videoEntry.TrailerPath) || !File.Exists(_videoEntry.TrailerPath))
+        {
+            return;
+        }
+
+        double maxDuration = _trailerDurationSeconds > 0 ? _trailerDurationSeconds : (_trailerScrubber.Maximum / 10.0);
+        double startSec = seekSec ?? (_trailerScrubber.Value / 10.0);
+
+        if (maxDuration > 0 && startSec >= maxDuration - 0.2)
+        {
+            startSec = 0.0;
+            _trailerScrubber.Value = 0;
+            _lblTrailerTime.Text = FormatTimestamp(0.0);
+        }
+
+        double remainingSec = Math.Max(0.5, maxDuration - startSec);
+
+        _isTrailerPlaying = true;
+        _btnPlayPauseTrailer.Text = "⏸ Pause";
+        _btnPlayPauseTrailer.BackColor = Color.FromArgb(190, 95, 20);
+
+        try
+        {
+            _trailerScrubCts?.Cancel();
+            _trailerScrubCts?.Dispose();
+            _trailerScrubCts = null;
+        }
+        catch { }
+
+        try
+        {
+            _trailerPlaybackCts?.Cancel();
+            _trailerPlaybackCts?.Dispose();
+            _trailerPlaybackCts = null;
+        }
+        catch { }
+
+        _trailerPlaybackCts = CancellationTokenSource.CreateLinkedTokenSource(_formCts.Token);
+        var token = _trailerPlaybackCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _generatorService.StreamSmoothPreviewAsync(
+                    _baseOptions.FfmpegPath,
+                    _videoEntry.TrailerPath,
+                    startSec,
+                    remainingSec,
+                    maxWidth: 640,
+                    isMutedProvider: () => _chkMuteTrailer.Checked,
+                    onFrameDecoded: (bmpBytes, timestamp) =>
+                    {
+                        if (token.IsCancellationRequested) return;
+                        if (Interlocked.CompareExchange(ref _trailerFrameUpdateInFlight, 1, 0) != 0) return;
+
+                        if (!IsHandleCreated || IsDisposed)
+                        {
+                            Interlocked.Exchange(ref _trailerFrameUpdateInFlight, 0);
+                            return;
+                        }
+
+                        try
+                        {
+                            BeginInvoke(new Action(() =>
+                            {
+                                try
+                                {
+                                    if (!_isTrailerPlaying || token.IsCancellationRequested || IsDisposed || Disposing)
+                                    {
+                                        return;
+                                    }
+
+                                    int trackVal = Math.Clamp((int)Math.Round(timestamp * 10.0), 0, _trailerScrubber.Maximum);
+                                    _trailerScrubber.Value = trackVal;
+                                    _lblTrailerTime.Text = FormatTimestamp(timestamp);
+                                    UpdateTrailerPreviewImage(bmpBytes);
+                                }
+                                finally
+                                {
+                                    Interlocked.Exchange(ref _trailerFrameUpdateInFlight, 0);
+                                }
+                            }));
+                        }
+                        catch
+                        {
+                            Interlocked.Exchange(ref _trailerFrameUpdateInFlight, 0);
+                        }
+                    },
+                    cancellationToken: token,
+                    volumeProvider: () => (float)(_volumeTrackBar.Value / 100.0f)).ConfigureAwait(false);
+
+                if (!token.IsCancellationRequested && IsHandleCreated && !IsDisposed)
+                {
+                    BeginInvoke(new Action(() =>
+                    {
+                        if (_isTrailerPlaying)
+                        {
+                            StopTrailerPlayback();
+                        }
+                    }));
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected when paused or scrubbed
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Trailer playback error: {ex.Message}");
+            }
+        }, token);
+    }
+
+    public void StopTrailerPlayback()
+    {
+        _isTrailerPlaying = false;
+
+        try
+        {
+            _trailerPlaybackCts?.Cancel();
+            _trailerPlaybackCts?.Dispose();
+            _trailerPlaybackCts = null;
+        }
+        catch { }
+
+        Interlocked.Exchange(ref _trailerFrameUpdateInFlight, 0);
+
+        if (IsHandleCreated && !IsDisposed)
+        {
+            _btnPlayPauseTrailer.Text = "▶ Play";
+            _btnPlayPauseTrailer.BackColor = Color.FromArgb(45, 45, 55);
+        }
+    }
+
+    private void StartPlayback()
+    {
+        if (_analysis == null) return;
+
+        _isPlaying = true;
+        _btnPlayPause.Text = "⏸ Pause";
+        _btnPlayPause.BackColor = Color.FromArgb(190, 95, 20);
+
+        try
+        {
+            _scrubCts?.Cancel();
+            _scrubCts?.Dispose();
+            _scrubCts = null;
+        }
+        catch { }
+
+        try
+        {
+            _playbackCts?.Cancel();
+            _playbackCts?.Dispose();
+            _playbackCts = null;
+        }
+        catch { }
+
+        StopTrailerPlayback();
+
+        _playbackCts = CancellationTokenSource.CreateLinkedTokenSource(_formCts.Token);
+        var token = _playbackCts.Token;
+
+        // Synchronized Dual-Player: Right side (Existing Trailer)
+        if (_chkCompareTrailer.Checked && !string.IsNullOrWhiteSpace(_videoEntry.TrailerPath) && File.Exists(_videoEntry.TrailerPath))
+        {
+            double maxDur = _trailerDurationSeconds > 0 ? _trailerDurationSeconds : (_trailerScrubber.Maximum / 10.0);
+            double trailerStart = _trailerScrubber.Value / 10.0;
+            if (maxDur > 0 && trailerStart >= maxDur - 0.2)
+            {
+                trailerStart = 0.0;
+                _trailerScrubber.Value = 0;
+                _lblTrailerTime.Text = FormatTimestamp(0.0);
+            }
+            double trailerRemaining = Math.Max(0.5, maxDur - trailerStart);
+
+            _isTrailerPlaying = true;
+            _btnPlayPauseTrailer.Text = "⏸ Pause";
+            _btnPlayPauseTrailer.BackColor = Color.FromArgb(190, 95, 20);
+
+            _trailerPlaybackCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            var trailerToken = _trailerPlaybackCts.Token;
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _generatorService.StreamSmoothPreviewAsync(
+                        _baseOptions.FfmpegPath,
+                        _videoEntry.TrailerPath,
+                        trailerStart,
+                        trailerRemaining,
+                        maxWidth: 640,
+                        isMutedProvider: () => _chkMuteTrailer.Checked,
+                        onFrameDecoded: (bmpBytes, timestamp) =>
+                        {
+                            if (trailerToken.IsCancellationRequested) return;
+                            if (Interlocked.CompareExchange(ref _trailerFrameUpdateInFlight, 1, 0) != 0) return;
+
+                            if (!IsHandleCreated || IsDisposed)
+                            {
+                                Interlocked.Exchange(ref _trailerFrameUpdateInFlight, 0);
+                                return;
+                            }
+
+                            try
+                            {
+                                BeginInvoke(new Action(() =>
+                                {
+                                    try
+                                    {
+                                        if (!_isTrailerPlaying || trailerToken.IsCancellationRequested || IsDisposed || Disposing)
+                                        {
+                                            return;
+                                        }
+
+                                        int trackVal = Math.Clamp((int)Math.Round(timestamp * 10.0), 0, _trailerScrubber.Maximum);
+                                        _trailerScrubber.Value = trackVal;
+                                        _lblTrailerTime.Text = FormatTimestamp(timestamp);
+                                        UpdateTrailerPreviewImage(bmpBytes);
+                                    }
+                                    finally
+                                    {
+                                        Interlocked.Exchange(ref _trailerFrameUpdateInFlight, 0);
+                                    }
+                                }));
+                            }
+                            catch
+                            {
+                                Interlocked.Exchange(ref _trailerFrameUpdateInFlight, 0);
+                            }
+                        },
+                        cancellationToken: trailerToken,
+                        volumeProvider: () => (float)(_volumeTrackBar.Value / 100.0f)).ConfigureAwait(false);
+
+                    if (!trailerToken.IsCancellationRequested && IsHandleCreated && !IsDisposed)
+                    {
+                        BeginInvoke(new Action(() =>
+                        {
+                            _isTrailerPlaying = false;
+                            _btnPlayPauseTrailer.Text = "▶ Play";
+                            _btnPlayPauseTrailer.BackColor = Color.FromArgb(45, 45, 55);
+                            // Hold final frame; do not stop new trailer
+                        }));
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected on pause/stop
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Synchronized trailer error: {ex.Message}");
+                }
+            }, trailerToken);
+        }
+
+        // Left side (New Trailer / Manual Segments Sequence or Continuous)
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (_workingSegments.Count > 0)
+                {
+                    var sortedSegments = _workingSegments.OrderBy(s => s.StartSeconds).ToList();
+                    foreach (var seg in sortedSegments)
+                    {
+                        if (token.IsCancellationRequested) break;
+                        if (seg.DurationSeconds <= 0.05) continue;
+
+                        if (IsHandleCreated && !IsDisposed)
+                        {
+                            BeginInvoke(new Action(() =>
+                            {
+                                if (token.IsCancellationRequested || IsDisposed || Disposing) return;
+                                _currentSeconds = seg.StartSeconds;
+                                _isUpdatingUi = true;
+                                _videoScrollBar.Value = Math.Clamp((int)Math.Round(_currentSeconds * 10.0), 0, _videoScrollBar.Maximum);
+                                _isUpdatingUi = false;
+                                UpdateTimestampLabel();
+                                InvalidateAllTimelines();
+                            }));
+                        }
+
+                        await _generatorService.StreamSmoothPreviewAsync(
+                            _baseOptions.FfmpegPath,
+                            _videoEntry.VideoPath,
+                            seg.StartSeconds,
+                            seg.DurationSeconds,
+                            maxWidth: 640,
+                            isMutedProvider: () => _isMuted,
+                            onFrameDecoded: (bmpBytes, timestamp) =>
+                            {
+                                if (token.IsCancellationRequested) return;
+                                if (Interlocked.CompareExchange(ref _uiFrameUpdateInFlight, 1, 0) != 0) return;
+
+                                if (!IsHandleCreated || IsDisposed)
+                                {
+                                    Interlocked.Exchange(ref _uiFrameUpdateInFlight, 0);
+                                    return;
+                                }
+
+                                try
+                                {
+                                    BeginInvoke(new Action(() =>
+                                    {
+                                        try
+                                        {
+                                            if (!_isPlaying || token.IsCancellationRequested || IsDisposed || Disposing)
+                                            {
+                                                return;
+                                            }
+
+                                            _currentSeconds = Math.Clamp(timestamp, 0.0, _durationSeconds);
+
+                                            _isUpdatingUi = true;
+                                            int trackVal = Math.Clamp((int)Math.Round(_currentSeconds * 10.0), 0, _videoScrollBar.Maximum);
+                                            _videoScrollBar.Value = trackVal;
+                                            _isUpdatingUi = false;
+
+                                            UpdateTimestampLabel();
+                                            InvalidateAllTimelines();
+                                            UpdatePreviewImage(bmpBytes);
+                                        }
+                                        finally
+                                        {
+                                            Interlocked.Exchange(ref _uiFrameUpdateInFlight, 0);
+                                        }
+                                    }));
+                                }
+                                catch
+                                {
+                                    Interlocked.Exchange(ref _uiFrameUpdateInFlight, 0);
+                                }
+                            },
+                            cancellationToken: token,
+                            volumeProvider: () => (float)(_volumeTrackBar.Value / 100.0f)).ConfigureAwait(false);
+                    }
+
+                    if (!token.IsCancellationRequested && IsHandleCreated && !IsDisposed)
+                    {
+                        BeginInvoke(new Action(() =>
+                        {
+                            if (_isPlaying)
+                            {
+                                StopPlayback();
+                            }
+                        }));
+                    }
+                }
+                else
+                {
+                    double startSec = _currentSeconds;
+                    if (startSec >= _durationSeconds - 0.2)
+                    {
+                        startSec = 0.0;
+                        if (IsHandleCreated && !IsDisposed)
+                        {
+                            BeginInvoke(new Action(() =>
+                            {
+                                _currentSeconds = 0.0;
+                                _isUpdatingUi = true;
+                                _videoScrollBar.Value = 0;
+                                _isUpdatingUi = false;
+                                UpdateTimestampLabel();
+                                InvalidateAllTimelines();
+                            }));
+                        }
+                    }
+
+                    await RunPlaybackLoopAsync(startSec, token).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected on stop/pause
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Playback stream error: {ex.Message}");
+            }
+        }, token);
     }
 
     private void StartPlaybackFromCurrentTime(int debounceMs = 0)
@@ -2033,6 +2468,15 @@ public sealed class ManualTrailerEditorForm : Form
         base.OnFormClosing(e);
 
         StopPlayback();
+        StopTrailerPlayback();
+
+        try
+        {
+            _trailerPlaybackCts?.Cancel();
+            _trailerPlaybackCts?.Dispose();
+            _trailerPlaybackCts = null;
+        }
+        catch { }
 
         try
         {
