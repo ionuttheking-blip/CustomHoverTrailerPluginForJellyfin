@@ -77,13 +77,35 @@ The **Custom Hover Trailer Plugin** integrates into Jellyfin Media Server and in
 - **Web Admin Dashboard**: Manage plugin settings and logging directly through the Jellyfin Dashboard.
 
 ### Plugin Installation
+
+#### Method A: Direct Install via Jellyfin Catalog (Recommended)
+You can install the plugin directly from the Jellyfin Web Admin Dashboard without touching any files:
+1. Open your Jellyfin Web Client as an Administrator.
+2. Go to **Dashboard -> Plugins -> Repositories**.
+3. Click the **"+"** button to add a new repository:
+   - **Repository Name**: `Custom Hover Trailer`
+   - **Repository URL**:
+     ```
+     https://raw.githubusercontent.com/ionuttheking-blip/CustomHoverTrailerPluginForJellyfin/main/manifest.json
+     ```
+4. Click **Save**, then switch to the **Catalog** tab.
+5. Locate **Custom Hover Trailer** under the *General* category, select the latest version, and click **Install**.
+6. Restart your Jellyfin Media Server.
+
+#### Method B: Automated Local PowerShell Deploy
+If you are developing or running Jellyfin locally on Windows:
+```powershell
+# Auto-detects Jellyfin plugins folder, compiles in Release, deploys files, and restarts service
+.\scripts\deploy-to-jellyfin.ps1 -RestartJellyfin
+```
+
+#### Method C: Manual Build & Copy
 1. Compile the solution in `Release` mode using the .NET 9 SDK:
    ```powershell
    dotnet build src/Jellyfin.Plugin.CustomHoverTrailer/Jellyfin.Plugin.CustomHoverTrailer.csproj -c Release
    ```
-2. Copy `Jellyfin.Plugin.CustomHoverTrailer.dll` and `YoutubeExplode.dll` from `bin/Release/net9.0/` into your Jellyfin server's `plugins/CustomHoverTrailer/` folder.
+2. Copy `Jellyfin.Plugin.CustomHoverTrailer.dll` and `YoutubeExplode.dll` from `bin/Release/net9.0/` into your Jellyfin server's `plugins/CustomHoverTrailer/` directory.
 3. Restart the Jellyfin service.
-4. Navigate to **Dashboard -> Plugins -> Custom Hover Trailer** to configure preferences.
 
 ---
 

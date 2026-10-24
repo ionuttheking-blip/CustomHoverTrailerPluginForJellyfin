@@ -1,0 +1,80 @@
+name: Build and Release Plugin
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore JellyfinTrailerSuite.sln
+
+      - name: Build plugin in Release mode
+        run: dotnet build src/Jellyfin.Plugin.CustomHoverTrailer/Jellyfin.Plugin.CustomHoverTrailer.csproj -c Release --warnaserror
+
+      - name: Package Plugin Zip
+        id: package
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}"
+          if (-not $version -or $version -eq "") { $version = "v1.1.0.0" }
+          $cleanVersion = $version.TrimStart('v')
+          $zipName = "CustomHoverTrailer_${cleanVersion}.zip"
+          $distDir = "dist"
+          New-Item -ItemType Directory -Force -Path $distDir | Out-Null
+          $zipPath = Join-Path $distDir $zipName
+
+          $outputDir = "src/Jellyfin.Plugin.CustomHoverTrailer/bin/Release/net9.0"
+          $files = @(
+              Join-Path $outputDir "Jellyfin.Plugin.CustomHoverTrailer.dll",
+              Join-Path $outputDir "YoutubeExplode.dll"
+          )
+
+          Compress-Archive -Path $files -DestinationPath $zipPath -Force
+          $md5 = (Get-FileHash -Path $zipPath -Algorithm MD5).Hash.ToLowerInvariant()
+          $sha256 = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+
+          echo "zip_path=$zipPath" >> $env:GITHUB_OUTPUT
+          echo "zip_name=$zipName" >> $env:GITHUB_OUTPUT
+          echo "version=$cleanVersion" >> $env:GITHUB_OUTPUT
+          echo "md5=$md5" >> $env:GITHUB_OUTPUT
+          echo "sha256=$sha256" >> $env:GITHUB_OUTPUT
+
+          Write-Host "Created: $zipName"
+          Write-Host "MD5 Checksum: $md5"
+          Write-Host "SHA256 Checksum: $sha256"
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.package.outputs.zip_path }}
+          name: Release ${{ github.ref_name }}
+          body: |
+            ### Custom Hover Trailer for Jellyfin - Version ${{ steps.package.outputs.version }}
+
+            #### Direct Jellyfin Catalog Installation:
+            Add this manifest repository URL in **Jellyfin Dashboard -> Plugins -> Repositories**:
+            `https://raw.githubusercontent.com/${{ github.repository }}/main/manifest.json`
+
+            #### Checksums:
+            - **MD5**: `${{ steps.package.outputs.md5 }}`
+            - **SHA256**: `${{ steps.package.outputs.sha256 }}`
+          draft: false
+          prerelease: false

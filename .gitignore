@@ -24,3 +24,5 @@ $RECYCLE.BIN/
 
 ## Local test output state
 trailer-generator-state.json
+
+dist/
