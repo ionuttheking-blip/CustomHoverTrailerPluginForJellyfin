@@ -21,6 +21,7 @@ public sealed class ManualTrailerEditorForm : Form
     private readonly VideoEntry _videoEntry;
     private readonly FfmpegGeneratorService _generatorService;
     private readonly TrailerGenerationOptions _baseOptions;
+    private readonly int _initialVolume;
 
     private readonly CancellationTokenSource _formCts = new();
     private CancellationTokenSource? _scrubCts;
@@ -114,11 +115,13 @@ public sealed class ManualTrailerEditorForm : Form
     public ManualTrailerEditorForm(
         VideoEntry videoEntry,
         FfmpegGeneratorService generatorService,
-        TrailerGenerationOptions baseOptions)
+        TrailerGenerationOptions baseOptions,
+        int defaultPreviewVolume = 50)
     {
         _videoEntry = videoEntry ?? throw new ArgumentNullException(nameof(videoEntry));
         _generatorService = generatorService ?? throw new ArgumentNullException(nameof(generatorService));
         _baseOptions = baseOptions ?? throw new ArgumentNullException(nameof(baseOptions));
+        _initialVolume = Math.Clamp(defaultPreviewVolume, 0, 100);
 
         Width = 1140;
         Height = 840;
@@ -293,13 +296,13 @@ public sealed class ManualTrailerEditorForm : Form
 
         _volumeTrackBar.Minimum = 0;
         _volumeTrackBar.Maximum = 100;
-        _volumeTrackBar.Value = 50;
+        _volumeTrackBar.Value = _initialVolume;
         _volumeTrackBar.TickStyle = TickStyle.None;
         _volumeTrackBar.Width = 95;
         _volumeTrackBar.Height = 26;
         _volumeTrackBar.Margin = new Padding(6, 5, 0, 0);
 
-        _lblVolume.Text = "Vol: 50%";
+        _lblVolume.Text = $"Vol: {_initialVolume}%";
         _lblVolume.AutoSize = true;
         _lblVolume.Font = new Font("Segoe UI", 8.5F);
         _lblVolume.Margin = new Padding(2, 8, 6, 0);
