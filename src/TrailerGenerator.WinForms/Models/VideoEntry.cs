@@ -16,6 +16,7 @@ public sealed class VideoEntry : INotifyPropertyChanged
     private bool _wasGenerated;
     private string _statusMessage = "Pending";
     private bool _isManual;
+    private VideoTimelineAnalysisResult? _cachedAnalysis;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -204,12 +205,69 @@ public sealed class VideoEntry : INotifyPropertyChanged
     /// Gets or sets the cached timeline analysis result (scenes, cuts, audio/movement candidates)
     /// to avoid expensive FFmpeg re-analysis.
     /// </summary>
-    public VideoTimelineAnalysisResult? CachedAnalysis { get; set; }
+    public VideoTimelineAnalysisResult? CachedAnalysis
+    {
+        get => _cachedAnalysis;
+        set
+        {
+            if (!ReferenceEquals(_cachedAnalysis, value))
+            {
+                _cachedAnalysis = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(AnalysisStatus));
+            }
+        }
+    }
 
     /// <summary>
     /// Gets or sets saved configuration segments keyed by mode and duration (e.g., "SoundDetect_60s", "Movement_90s").
     /// </summary>
     public Dictionary<string, List<ManualSegmentItem>> SavedConfigurations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gets a readable description of which analyses (Scenes, Audio, Motion) and presets exist for this video.
+    /// </summary>
+    public string AnalysisStatus
+    {
+        get
+        {
+            if (CachedAnalysis == null)
+            {
+                if (SavedConfigurations != null && SavedConfigurations.Count > 0)
+                {
+                    return $"Presets Only ({SavedConfigurations.Count})";
+                }
+                return "Not Analyzed";
+            }
+
+            var parts = new List<string>(3);
+            if (CachedAnalysis.Scenes.Count > 0 || CachedAnalysis.SceneCutTimestamps.Count > 0)
+            {
+                parts.Add("Scenes");
+            }
+            if ((CachedAnalysis.AudioPoints != null && CachedAnalysis.AudioPoints.Count > 0) || CachedAnalysis.AudioModeSegments.Count > 0)
+            {
+                parts.Add("Audio");
+            }
+            if ((CachedAnalysis.MotionPoints != null && CachedAnalysis.MotionPoints.Count > 0) || CachedAnalysis.MovementModeSegments.Count > 0)
+            {
+                parts.Add("Motion");
+            }
+
+            if (parts.Count == 0)
+            {
+                return "Partial (Metadata)";
+            }
+
+            string baseStr = parts.Count == 3 ? "Full (Scenes, Audio, Motion)" : string.Join(", ", parts);
+            if (SavedConfigurations != null && SavedConfigurations.Count > 0)
+            {
+                var configKeys = string.Join(", ", SavedConfigurations.Keys);
+                return $"{baseStr} | Configs: {configKeys}";
+            }
+            return baseStr;
+        }
+    }
 
     /// <summary>
     /// Explicitly notifies bindings that status and trailer properties have updated.
@@ -225,6 +283,7 @@ public sealed class VideoEntry : INotifyPropertyChanged
         OnPropertyChanged(nameof(Selected));
         OnPropertyChanged(nameof(IsManual));
         OnPropertyChanged(nameof(GenerationType));
+        OnPropertyChanged(nameof(AnalysisStatus));
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)

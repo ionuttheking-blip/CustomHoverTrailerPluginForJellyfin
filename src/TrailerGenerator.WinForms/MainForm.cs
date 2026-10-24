@@ -479,7 +479,9 @@ public sealed class MainForm : Form
             "Has Any Trailer",
             "Checked Only",
             "Manual Mode Only",
-            "Automatic Mode Only"
+            "Automatic Mode Only",
+            "Analyzed Only",
+            "Unanalyzed Only"
         ]);
         _statusFilterComboBox.SelectedIndex = 0;
         _statusFilterComboBox.SelectedIndexChanged += (_, _) => ApplyFilterAndSort();
@@ -738,6 +740,14 @@ public sealed class MainForm : Form
             ReadOnly = true,
             SortMode = DataGridViewColumnSortMode.Automatic
         };
+        var colAnalysis = new DataGridViewTextBoxColumn
+        {
+            DataPropertyName = nameof(VideoEntry.AnalysisStatus),
+            HeaderText = "Analysis",
+            Width = 190,
+            ReadOnly = true,
+            SortMode = DataGridViewColumnSortMode.Automatic
+        };
         var colStatus = new DataGridViewTextBoxColumn
         {
             DataPropertyName = nameof(VideoEntry.StatusMessage),
@@ -755,7 +765,7 @@ public sealed class MainForm : Form
             SortMode = DataGridViewColumnSortMode.Automatic
         };
 
-        _videoGrid.Columns.AddRange([colSelect, colFileName, colTrailer, colMode, colStatus, colFolder]);
+        _videoGrid.Columns.AddRange([colSelect, colFileName, colTrailer, colMode, colAnalysis, colStatus, colFolder]);
 
         _videoGrid.Sorted += (_, _) =>
         {
@@ -835,20 +845,33 @@ public sealed class MainForm : Form
                 v.FolderPath.Contains(filterText, StringComparison.OrdinalIgnoreCase) ||
                 v.TrailerFileName.Contains(filterText, StringComparison.OrdinalIgnoreCase) ||
                 v.GenerationType.Contains(filterText, StringComparison.OrdinalIgnoreCase) ||
-                v.StatusMessage.Contains(filterText, StringComparison.OrdinalIgnoreCase));
+                v.StatusMessage.Contains(filterText, StringComparison.OrdinalIgnoreCase) ||
+                v.AnalysisStatus.Contains(filterText, StringComparison.OrdinalIgnoreCase));
         }
 
-        query = statusIndex switch
+        var selectedFilter = _statusFilterComboBox.SelectedItem?.ToString();
+        if (selectedFilter == "Analyzed Only")
         {
-            1 => query.Where(v => !v.HasTrailer),
-            2 => query.Where(v => v.WasGenerated),
-            3 => query.Where(v => !v.WasGenerated),
-            4 => query.Where(v => v.HasTrailer || v.WasGenerated),
-            5 => query.Where(v => v.IsSelected),
-            6 => query.Where(v => v.IsManual),
-            7 => query.Where(v => !v.IsManual),
-            _ => query // 0 = All Videos
-        };
+            query = query.Where(v => v.CachedAnalysis != null);
+        }
+        else if (selectedFilter == "Unanalyzed Only")
+        {
+            query = query.Where(v => v.CachedAnalysis == null);
+        }
+        else
+        {
+            query = statusIndex switch
+            {
+                1 => query.Where(v => !v.HasTrailer),
+                2 => query.Where(v => v.WasGenerated),
+                3 => query.Where(v => !v.WasGenerated),
+                4 => query.Where(v => v.HasTrailer || v.WasGenerated),
+                5 => query.Where(v => v.IsSelected),
+                6 => query.Where(v => v.IsManual),
+                7 => query.Where(v => !v.IsManual),
+                _ => query // 0 = All Videos
+            };
+        }
 
         var filteredList = query.ToList();
         _videos = new SortableBindingList<VideoEntry>(filteredList);
