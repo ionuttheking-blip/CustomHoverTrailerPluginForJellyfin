@@ -9,9 +9,10 @@ namespace TrailerGenerator.WinForms;
 
 /// <summary>
 /// Interactive manual trailer editor window providing a video viewport, scrubbing controls,
-/// smooth 24 FPS preview with synchronized audio playback, stacked timeline visualization
-/// (Detected Scenes, Audio, Movement, Random, and Manual Segments), instant opening via cached
-/// analysis, re-analysis controls, and saved configuration preset selection.
+/// smooth 24 FPS preview with synchronized audio playback, volume slider, side-by-side
+/// existing trailer comparison, stacked timeline visualization (Detected Scenes, Audio,
+/// Movement, Random, and Manual Segments), instant opening via cached analysis, re-analysis controls,
+/// and saved configuration preset selection.
 /// </summary>
 public sealed class ManualTrailerEditorForm : Form
 {
@@ -44,8 +45,15 @@ public sealed class ManualTrailerEditorForm : Form
     private readonly Label _videoTitleLabel = new();
     private readonly Label _statusLabel = new();
 
-    // Video viewport & preview
+    // Video viewport & side-by-side trailer comparison
+    private readonly TableLayoutPanel _previewSplitContainer = new();
     private readonly PictureBox _videoPreviewBox = new();
+    private readonly Panel _trailerPreviewPanel = new();
+    private readonly PictureBox _existingTrailerPreviewBox = new();
+    private readonly TrackBar _trailerScrubber = new();
+    private readonly Label _lblTrailerTime = new();
+    private double _trailerDurationSeconds;
+    private CancellationTokenSource? _trailerScrubCts;
 
     // Transport controls
     private readonly Button _btnStepBack10 = new();
@@ -55,6 +63,9 @@ public sealed class ManualTrailerEditorForm : Form
     private readonly Button _btnStepForward10 = new();
     private readonly Button _btnAddSegmentHere = new();
     private readonly CheckBox _muteCheckBox = new();
+    private readonly TrackBar _volumeTrackBar = new();
+    private readonly Label _lblVolume = new();
+    private readonly CheckBox _chkCompareTrailer = new();
     private readonly Button _btnReanalyze = new();
     private readonly Label _timestampReadoutLabel = new();
 
@@ -130,12 +141,12 @@ public sealed class ManualTrailerEditorForm : Form
             Padding = new Padding(12)
         };
 
-        // Heights: Header (34px), Video Preview (260px), Transport (38px), Timelines (204px), Grid & Controls (fill), Actions (44px)
+        // Heights: Header (34px), Video Preview (55% responsive), Transport (38px), Timelines (204px), Grid & Controls (45%), Actions (44px)
         rootLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));  // 0: Header
-        rootLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 260)); // 1: Video Viewport
+        rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 55));   // 1: Video Viewport (responsive scaling with window)
         rootLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));  // 2: Transport bar
         rootLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 204)); // 3: Stacked Timelines
-        rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));  // 4: Segments Grid & Controls
+        rootLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 45));   // 4: Segments Grid & Controls (shares height)
         rootLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));  // 5: Action buttons
 
         // -------------------------------------------------------------
@@ -167,7 +178,7 @@ public sealed class ManualTrailerEditorForm : Form
         rootLayout.Controls.Add(headerPanel, 0, 0);
 
         // -------------------------------------------------------------
-        // Row 1: Video Preview Viewport
+        // Row 1: Video Preview Viewport & Side-by-Side Comparison Container
         // -------------------------------------------------------------
         var previewContainer = new Panel
         {
@@ -177,10 +188,81 @@ public sealed class ManualTrailerEditorForm : Form
             Margin = new Padding(0, 2, 0, 4)
         };
 
+        _previewSplitContainer.Dock = DockStyle.Fill;
+        _previewSplitContainer.ColumnCount = 2;
+        _previewSplitContainer.RowCount = 1;
+        _previewSplitContainer.Margin = new Padding(0);
+        _previewSplitContainer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        _previewSplitContainer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 0f));
+
         _videoPreviewBox.Dock = DockStyle.Fill;
         _videoPreviewBox.SizeMode = PictureBoxSizeMode.Zoom;
         _videoPreviewBox.BackColor = Color.FromArgb(16, 16, 20);
-        previewContainer.Controls.Add(_videoPreviewBox);
+
+        // Construct existing trailer comparison panel
+        var trailerLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Margin = new Padding(0)
+        };
+        trailerLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 22)); // Header
+        trailerLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // Preview
+        trailerLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28)); // Scrubber & Time
+
+        var lblTopTrailer = new Label
+        {
+            Text = "Existing Trailer",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Font = new Font("Segoe UI", 8.5F, FontStyle.Bold),
+            ForeColor = Color.White,
+            BackColor = Color.FromArgb(30, 30, 38)
+        };
+
+        _existingTrailerPreviewBox.Dock = DockStyle.Fill;
+        _existingTrailerPreviewBox.SizeMode = PictureBoxSizeMode.Zoom;
+        _existingTrailerPreviewBox.BackColor = Color.FromArgb(16, 16, 20);
+
+        var miniTransport = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = new Padding(0),
+            BackColor = Color.FromArgb(24, 24, 30)
+        };
+        miniTransport.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        miniTransport.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
+
+        _trailerScrubber.Dock = DockStyle.Fill;
+        _trailerScrubber.Minimum = 0;
+        _trailerScrubber.Maximum = 600;
+        _trailerScrubber.TickStyle = TickStyle.None;
+        _trailerScrubber.Margin = new Padding(2, 2, 2, 2);
+
+        _lblTrailerTime.Text = "00:00.0";
+        _lblTrailerTime.ForeColor = Color.LightGray;
+        _lblTrailerTime.Dock = DockStyle.Fill;
+        _lblTrailerTime.TextAlign = ContentAlignment.MiddleCenter;
+        _lblTrailerTime.Font = new Font("Segoe UI", 8F);
+
+        miniTransport.Controls.Add(_trailerScrubber, 0, 0);
+        miniTransport.Controls.Add(_lblTrailerTime, 1, 0);
+
+        trailerLayout.Controls.Add(lblTopTrailer, 0, 0);
+        trailerLayout.Controls.Add(_existingTrailerPreviewBox, 0, 1);
+        trailerLayout.Controls.Add(miniTransport, 0, 2);
+
+        _trailerPreviewPanel.Dock = DockStyle.Fill;
+        _trailerPreviewPanel.Margin = new Padding(2, 0, 0, 0);
+        _trailerPreviewPanel.Controls.Add(trailerLayout);
+
+        _previewSplitContainer.Controls.Add(_videoPreviewBox, 0, 0);
+        _previewSplitContainer.Controls.Add(_trailerPreviewPanel, 1, 0);
+        previewContainer.Controls.Add(_previewSplitContainer);
+
         rootLayout.Controls.Add(previewContainer, 0, 1);
 
         // -------------------------------------------------------------
@@ -191,6 +273,7 @@ public sealed class ManualTrailerEditorForm : Form
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
+            AutoScroll = true,
             Margin = new Padding(0, 2, 0, 2)
         };
 
@@ -208,12 +291,40 @@ public sealed class ManualTrailerEditorForm : Form
         _muteCheckBox.Font = new Font("Segoe UI", 9F);
         _muteCheckBox.Margin = new Padding(8, 6, 0, 0);
 
+        _volumeTrackBar.Minimum = 0;
+        _volumeTrackBar.Maximum = 100;
+        _volumeTrackBar.Value = 50;
+        _volumeTrackBar.TickStyle = TickStyle.None;
+        _volumeTrackBar.Width = 95;
+        _volumeTrackBar.Height = 26;
+        _volumeTrackBar.Margin = new Padding(6, 5, 0, 0);
+
+        _lblVolume.Text = "Vol: 50%";
+        _lblVolume.AutoSize = true;
+        _lblVolume.Font = new Font("Segoe UI", 8.5F);
+        _lblVolume.Margin = new Padding(2, 8, 6, 0);
+
+        bool hasExistingTrailer = !string.IsNullOrWhiteSpace(_videoEntry.TrailerPath) && File.Exists(_videoEntry.TrailerPath);
+        _chkCompareTrailer.AutoSize = true;
+        _chkCompareTrailer.Font = new Font("Segoe UI", 9F);
+        _chkCompareTrailer.Margin = new Padding(6, 6, 0, 0);
+        if (!hasExistingTrailer)
+        {
+            _chkCompareTrailer.Enabled = false;
+            _chkCompareTrailer.Text = "No Existing Trailer";
+        }
+        else
+        {
+            _chkCompareTrailer.Enabled = true;
+            _chkCompareTrailer.Text = "🔀 Compare Existing Trailer";
+        }
+
         _btnReanalyze.Text = "🔄 Re-analyze File";
         _btnReanalyze.AutoSize = true;
         _btnReanalyze.Height = 30;
         _btnReanalyze.BackColor = Color.FromArgb(235, 240, 248);
         _btnReanalyze.Font = new Font("Segoe UI", 9F);
-        _btnReanalyze.Margin = new Padding(8, 2, 0, 2);
+        _btnReanalyze.Margin = new Padding(6, 2, 0, 2);
 
         _timestampReadoutLabel.Text = "00:00:00.0 / 00:00:00.0";
         _timestampReadoutLabel.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
@@ -228,6 +339,9 @@ public sealed class ManualTrailerEditorForm : Form
         transportPanel.Controls.Add(_btnStepForward10);
         transportPanel.Controls.Add(_btnAddSegmentHere);
         transportPanel.Controls.Add(_muteCheckBox);
+        transportPanel.Controls.Add(_volumeTrackBar);
+        transportPanel.Controls.Add(_lblVolume);
+        transportPanel.Controls.Add(_chkCompareTrailer);
         transportPanel.Controls.Add(_btnReanalyze);
         transportPanel.Controls.Add(_timestampReadoutLabel);
 
@@ -559,6 +673,14 @@ public sealed class ManualTrailerEditorForm : Form
         _btnPlayPause.Click += (s, e) => TogglePlayPause();
         _btnAddSegmentHere.Click += (s, e) => AddSegmentAtCurrentPosition();
         _muteCheckBox.CheckedChanged += (s, e) => _isMuted = _muteCheckBox.Checked;
+        _volumeTrackBar.ValueChanged += (s, e) => _lblVolume.Text = $"Vol: {_volumeTrackBar.Value}%";
+        _chkCompareTrailer.CheckedChanged += async (s, e) => await HandleCompareTrailerCheckedChangedAsync();
+        _trailerScrubber.Scroll += (s, e) =>
+        {
+            double sec = _trailerScrubber.Value / 10.0;
+            _lblTrailerTime.Text = FormatTimestamp(sec);
+            _ = RequestTrailerFrameAsync(sec, immediate: false);
+        };
         _btnReanalyze.Click += async (s, e) => await HandleReanalyzeClickAsync();
 
         // Main Scrubber
@@ -720,6 +842,111 @@ public sealed class ManualTrailerEditorForm : Form
         await InitializeAnalysisAsync(forceReanalyze: true);
     }
 
+    private async Task HandleCompareTrailerCheckedChangedAsync()
+    {
+        if (_chkCompareTrailer.Checked)
+        {
+            _previewSplitContainer.ColumnStyles[0].Width = 50f;
+            _previewSplitContainer.ColumnStyles[1].Width = 50f;
+            await InitializeAndRenderTrailerPreviewAsync();
+        }
+        else
+        {
+            _previewSplitContainer.ColumnStyles[0].Width = 100f;
+            _previewSplitContainer.ColumnStyles[1].Width = 0f;
+        }
+    }
+
+    private async Task InitializeAndRenderTrailerPreviewAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_videoEntry.TrailerPath) || !File.Exists(_videoEntry.TrailerPath))
+        {
+            return;
+        }
+
+        if (_trailerDurationSeconds <= 0)
+        {
+            var dur = await _generatorService.GetVideoDurationSecondsAsync(_baseOptions.FfmpegPath, _videoEntry.TrailerPath, _formCts.Token);
+            _trailerDurationSeconds = dur ?? 60.0;
+            _trailerScrubber.Minimum = 0;
+            _trailerScrubber.Maximum = Math.Max(1, (int)Math.Ceiling(_trailerDurationSeconds * 10.0));
+        }
+
+        double currentTrailerSec = _trailerScrubber.Value / 10.0;
+        _lblTrailerTime.Text = FormatTimestamp(currentTrailerSec);
+        await RequestTrailerFrameAsync(currentTrailerSec, immediate: true);
+    }
+
+    private async Task RequestTrailerFrameAsync(double timestamp, bool immediate)
+    {
+        try
+        {
+            _trailerScrubCts?.Cancel();
+            _trailerScrubCts?.Dispose();
+            _trailerScrubCts = null;
+        }
+        catch { }
+
+        _trailerScrubCts = CancellationTokenSource.CreateLinkedTokenSource(_formCts.Token);
+        var token = _trailerScrubCts.Token;
+
+        try
+        {
+            if (!immediate)
+            {
+                await Task.Delay(60, token).ConfigureAwait(false);
+            }
+
+            var bytes = await _generatorService.ExtractFrameBytesAsync(
+                _baseOptions.FfmpegPath,
+                _videoEntry.TrailerPath,
+                timestamp,
+                640,
+                token).ConfigureAwait(false);
+
+            if (token.IsCancellationRequested || bytes == null || bytes.Length == 0)
+            {
+                return;
+            }
+
+            if (IsDisposed || Disposing) return;
+
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(() => UpdateTrailerPreviewImage(bytes)));
+            }
+            else
+            {
+                UpdateTrailerPreviewImage(bytes);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Normal on rapid scrubbing
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Trailer frame preview error: {ex.Message}");
+        }
+    }
+
+    private void UpdateTrailerPreviewImage(byte[] bmpBytes)
+    {
+        if (IsDisposed || Disposing) return;
+        try
+        {
+            using var ms = new MemoryStream(bmpBytes);
+            var newBmp = new Bitmap(ms);
+            var oldImage = _existingTrailerPreviewBox.Image;
+            _existingTrailerPreviewBox.Image = newBmp;
+            oldImage?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Trailer image decode error: {ex.Message}");
+        }
+    }
+
     private void PopulateSavedConfigurations()
     {
         _savedConfigsComboBox.Items.Clear();
@@ -781,6 +1008,10 @@ public sealed class ManualTrailerEditorForm : Form
         _btnStepForward10.Enabled = enabled;
         _btnAddSegmentHere.Enabled = enabled;
         _muteCheckBox.Enabled = enabled;
+        _volumeTrackBar.Enabled = enabled;
+        bool hasTrailer = !string.IsNullOrWhiteSpace(_videoEntry.TrailerPath) && File.Exists(_videoEntry.TrailerPath);
+        _chkCompareTrailer.Enabled = enabled && hasTrailer;
+        _trailerScrubber.Enabled = enabled && hasTrailer;
         _btnReanalyze.Enabled = enabled;
         _videoScrollBar.Enabled = enabled;
         _btnApplyAudio.Enabled = enabled;
@@ -949,7 +1180,8 @@ public sealed class ManualTrailerEditorForm : Form
                         Interlocked.Exchange(ref _uiFrameUpdateInFlight, 0);
                     }
                 },
-                cancellationToken: token);
+                cancellationToken: token,
+                volumeProvider: () => (float)(_volumeTrackBar.Value / 100.0f));
 
             if (!token.IsCancellationRequested)
             {
@@ -1790,6 +2022,14 @@ public sealed class ManualTrailerEditorForm : Form
 
         try
         {
+            _trailerScrubCts?.Cancel();
+            _trailerScrubCts?.Dispose();
+            _trailerScrubCts = null;
+        }
+        catch { }
+
+        try
+        {
             _scrubCts?.Cancel();
             _scrubCts?.Dispose();
             _scrubCts = null;
@@ -1806,6 +2046,10 @@ public sealed class ManualTrailerEditorForm : Form
         var oldImg = _videoPreviewBox.Image;
         _videoPreviewBox.Image = null;
         oldImg?.Dispose();
+
+        var oldTrailerImg = _existingTrailerPreviewBox.Image;
+        _existingTrailerPreviewBox.Image = null;
+        oldTrailerImg?.Dispose();
     }
 
     // -----------------------------------------------------------------
