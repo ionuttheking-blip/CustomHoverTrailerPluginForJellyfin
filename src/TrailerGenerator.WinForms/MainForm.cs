@@ -63,9 +63,15 @@ public sealed class MainForm : Form
     private readonly Button _checkAllButton = new();
     private readonly Button _uncheckAllButton = new();
     private readonly Button _resetToAutoButton = new();
+    private readonly Button _btnAnalyzeSelected = new();
+    private readonly Button _btnDeleteTrailers = new();
+    private readonly ContextMenuStrip _gridContextMenu = new();
     private readonly DataGridView _videoGrid = new();
     private DataGridView _videosGrid => _videoGrid; // Backward-compatibility alias
     private int _lastCheckedRowIndex = -1;
+
+    private FfmpegGeneratorService _generatorService => _generator;
+    private void LogMessage(string message) => AppendLog(message);
 
     // Backward-compatibility aliases for Section 3 buttons
     private Button _selectMissingButton => _checkMissingButton;
@@ -535,6 +541,19 @@ public sealed class MainForm : Form
         _resetToAutoButton.Margin = new Padding(2, 3, 4, 3);
         _resetToAutoButton.Click += OnResetToAutoButtonClick;
 
+        _btnAnalyzeSelected.Text = "🔍 Analyze Selected";
+        _btnAnalyzeSelected.Width = 145;
+        _btnAnalyzeSelected.Height = 27;
+        _btnAnalyzeSelected.Margin = new Padding(2, 3, 4, 3);
+        _btnAnalyzeSelected.Click += async (_, _) => await RunBatchAnalysisAsync();
+
+        _btnDeleteTrailers.Text = "🗑️ Delete Trailers";
+        _btnDeleteTrailers.Width = 135;
+        _btnDeleteTrailers.Height = 27;
+        _btnDeleteTrailers.BackColor = Color.FromArgb(255, 240, 240);
+        _btnDeleteTrailers.Margin = new Padding(2, 3, 4, 3);
+        _btnDeleteTrailers.Click += (_, _) => RunDeleteTrailers();
+
         filterSortBar.Controls.AddRange(
         [
             new Label { Text = "Filter:", AutoSize = true, Margin = new Padding(3, 8, 2, 3) },
@@ -546,7 +565,9 @@ public sealed class MainForm : Form
             _checkMissingButton,
             _checkAllButton,
             _uncheckAllButton,
-            _resetToAutoButton
+            _resetToAutoButton,
+            _btnAnalyzeSelected,
+            _btnDeleteTrailers
         ]);
 
         ConfigureDataGridView();
@@ -739,6 +760,27 @@ public sealed class MainForm : Form
                 SaveCurrentState();
             }
         };
+
+        _gridContextMenu.Items.Clear();
+        var itemAnalyze = new ToolStripMenuItem("Analyze Selected Video(s)", null, async (_, _) => await RunBatchAnalysisAsync(GetTargetVideos(preferSelectedGridRows: true)));
+        var itemDelete = new ToolStripMenuItem("Delete Trailer File(s)", null, (_, _) => RunDeleteTrailers(GetDeleteTargetVideos(preferSelectedGridRows: true)));
+        var itemEditor = new ToolStripMenuItem("Open In Manual Editor", null, (_, _) => OpenManualEditorForSelectedRow());
+
+        _gridContextMenu.Items.AddRange([itemAnalyze, itemDelete, new ToolStripSeparator(), itemEditor]);
+        _gridContextMenu.Opening += (_, e) =>
+        {
+            if (_isGenerating || _videos.Count == 0)
+            {
+                e.Cancel = true;
+                return;
+            }
+
+            var selected = GetTargetVideos(preferSelectedGridRows: true);
+            itemAnalyze.Enabled = selected.Count > 0;
+            itemDelete.Enabled = selected.Any(v => File.Exists(v.TrailerPath) || v.HasTrailer || v.WasGenerated);
+            itemEditor.Enabled = _videoGrid.CurrentRow != null && _videoGrid.CurrentRow.Index >= 0 && _videoGrid.CurrentRow.Index < _videos.Count;
+        };
+        _videoGrid.ContextMenuStrip = _gridContextMenu;
 
         _videoGrid.CellMouseDown += OnVideoGridCellMouseDown;
         _videoGrid.CellContentClick += OnVideoGridCellContentClick;
@@ -1369,6 +1411,8 @@ public sealed class MainForm : Form
         _isGenerating = busy;
         _generateButton.Enabled = !busy;
         _cancelButton.Enabled = busy;
+        _btnAnalyzeSelected.Enabled = !busy;
+        _btnDeleteTrailers.Enabled = !busy;
         _scanButton.Enabled = !busy;
         _addFolderButton.Enabled = !busy;
         _removeFolderButton.Enabled = !busy;
@@ -1442,14 +1486,20 @@ public sealed class MainForm : Form
         };
     }
 
-    private void OnVideoGridCellDoubleClick(object? sender, DataGridViewCellEventArgs e)
+    public void OpenManualEditorForSelectedRow(int targetRowIndex = -1)
     {
-        if (_isGenerating || e.RowIndex < 0 || e.RowIndex >= _videos.Count || e.ColumnIndex == 0)
+        if (_isGenerating)
         {
             return;
         }
 
-        var entry = _videos[e.RowIndex];
+        int rowIndex = targetRowIndex >= 0 ? targetRowIndex : (_videoGrid.CurrentRow?.Index ?? -1);
+        if (rowIndex < 0 || rowIndex >= _videos.Count)
+        {
+            return;
+        }
+
+        var entry = _videos[rowIndex];
         var baseOptions = BuildCurrentGenerationOptions();
 
         using var editor = new ManualTrailerEditorForm(entry, _generator, baseOptions);
@@ -1469,6 +1519,266 @@ public sealed class MainForm : Form
 
             SaveCurrentState();
         }
+    }
+
+    private void OnVideoGridCellDoubleClick(object? sender, DataGridViewCellEventArgs e)
+    {
+        if (_isGenerating || e.RowIndex < 0 || e.RowIndex >= _videos.Count || e.ColumnIndex == 0)
+        {
+            return;
+        }
+
+        OpenManualEditorForSelectedRow(e.RowIndex);
+    }
+
+    public List<VideoEntry> GetTargetVideos(bool preferSelectedGridRows = false)
+    {
+        if (preferSelectedGridRows)
+        {
+            var gridSelected = _videoGrid.SelectedRows
+                .Cast<DataGridViewRow>()
+                .Where(r => r.Index >= 0 && r.Index < _videos.Count)
+                .OrderBy(r => r.Index)
+                .Select(r => _videos[r.Index])
+                .Distinct()
+                .ToList();
+
+            if (gridSelected.Count > 0)
+            {
+                return gridSelected;
+            }
+        }
+
+        var checkedVideos = _videos.Where(v => v.IsSelected).ToList();
+        if (checkedVideos.Count > 0)
+        {
+            return checkedVideos;
+        }
+
+        if (_videoGrid.SelectedRows.Count > 0)
+        {
+            return _videoGrid.SelectedRows
+                .Cast<DataGridViewRow>()
+                .Where(r => r.Index >= 0 && r.Index < _videos.Count)
+                .OrderBy(r => r.Index)
+                .Select(r => _videos[r.Index])
+                .Distinct()
+                .ToList();
+        }
+
+        if (_videoGrid.CurrentRow != null && _videoGrid.CurrentRow.Index >= 0 && _videoGrid.CurrentRow.Index < _videos.Count)
+        {
+            return new List<VideoEntry> { _videos[_videoGrid.CurrentRow.Index] };
+        }
+
+        return new List<VideoEntry>();
+    }
+
+    public List<VideoEntry> GetDeleteTargetVideos(bool preferSelectedGridRows = false)
+    {
+        var targets = GetTargetVideos(preferSelectedGridRows);
+        return targets.Where(v => File.Exists(v.TrailerPath) || v.HasTrailer || v.WasGenerated).ToList();
+    }
+
+    public async Task RunBatchAnalysisAsync(IReadOnlyList<VideoEntry>? targetVideos = null)
+    {
+        if (_isGenerating)
+        {
+            return;
+        }
+
+        _videoGrid.EndEdit();
+        var toProcess = (targetVideos ?? GetTargetVideos(preferSelectedGridRows: false)).ToList();
+        if (toProcess.Count == 0)
+        {
+            MessageBox.Show(this, "No videos selected for analysis.", "Analyze Selected", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        var ffmpegPath = _ffmpegPathTextBox.Text.Trim();
+        if (string.IsNullOrEmpty(ffmpegPath))
+        {
+            MessageBox.Show(this, "Please specify the path to ffmpeg.exe.", "FFmpeg Required", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        var options = BuildCurrentGenerationOptions();
+        SetBusyState(true);
+        _progressBar.Minimum = 0;
+        _progressBar.Maximum = toProcess.Count;
+        _progressBar.Value = 0;
+
+        _cts = new CancellationTokenSource();
+        var token = _cts.Token;
+
+        int parallelDegree = Math.Max(1, (int)_parallelCountNumeric.Value);
+        using var semaphore = new SemaphoreSlim(parallelDegree, parallelDegree);
+
+        int activeJobs = 0;
+        int completedCount = 0;
+        int successCount = 0;
+        int failCount = 0;
+        int totalCount = toProcess.Count;
+
+        try
+        {
+            AppendLog($"Starting batch timeline analysis for {totalCount} video(s) ({parallelDegree} concurrent job(s))...");
+
+            var tasks = toProcess.Select(async item =>
+            {
+                await semaphore.WaitAsync(token);
+                var active = Interlocked.Increment(ref activeJobs);
+                var done = Volatile.Read(ref completedCount);
+
+                RunOnUiThread(() =>
+                {
+                    item.StatusMessage = "Analyzing...";
+                    _statusLabel.Text = $"[Active: {active} | Done: {done}/{totalCount}] {item.FileName}: Analyzing...";
+                    _videoGrid.Refresh();
+                });
+
+                try
+                {
+                    token.ThrowIfCancellationRequested();
+
+                    await _generator.AnalyzeVideoTimelineAsync(
+                        ffmpegPath,
+                        item.VideoPath,
+                        options,
+                        msg => AppendLog($"[{item.FileName}] {msg}"),
+                        token,
+                        videoEntry: item,
+                        forceReanalyze: true);
+
+                    Interlocked.Increment(ref successCount);
+                    var currentDone = Interlocked.Increment(ref completedCount);
+
+                    RunOnUiThread(() =>
+                    {
+                        item.StatusMessage = "Analysis Ready";
+                        _progressBar.Value = Math.Min(_progressBar.Maximum, currentDone);
+                        _statusLabel.Text = $"[Active: {Volatile.Read(ref activeJobs)} | Done: {currentDone}/{totalCount}] {item.FileName}: Analysis Ready";
+                        _videoGrid.Refresh();
+                        SaveCurrentState();
+                    });
+                }
+                catch (OperationCanceledException)
+                {
+                    RunOnUiThread(() =>
+                    {
+                        item.StatusMessage = "Cancelled";
+                        _videoGrid.Refresh();
+                    });
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    Interlocked.Increment(ref failCount);
+                    var currentDone = Interlocked.Increment(ref completedCount);
+
+                    RunOnUiThread(() =>
+                    {
+                        item.StatusMessage = "Analysis Failed";
+                        _progressBar.Value = Math.Min(_progressBar.Maximum, currentDone);
+                        _statusLabel.Text = $"[Active: {Volatile.Read(ref activeJobs)} | Done: {currentDone}/{totalCount}] {item.FileName}: Analysis Failed";
+                        _videoGrid.Refresh();
+                        SaveCurrentState();
+                    });
+
+                    AppendLog($"ERROR Analyzing [{item.FileName}]: {ex.Message}");
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref activeJobs);
+                    semaphore.Release();
+                }
+            }).ToList();
+
+            await Task.WhenAll(tasks);
+
+            _statusLabel.Text = $"Finished analysis: {successCount} ready, {failCount} failed ({totalCount} total).";
+            AppendLog($"=== Batch analysis complete: {successCount} ready, {failCount} failed. ===");
+        }
+        catch (OperationCanceledException)
+        {
+            _statusLabel.Text = $"Analysis cancelled: {successCount} completed, {failCount} failed.";
+            AppendLog("=== Batch analysis cancelled by user. ===");
+        }
+        catch (AggregateException ae) when (ae.InnerExceptions.Any(e => e is OperationCanceledException))
+        {
+            _statusLabel.Text = $"Analysis cancelled: {successCount} completed, {failCount} failed.";
+            AppendLog("=== Batch analysis cancelled by user. ===");
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            RunOnUiThread(() =>
+            {
+                SetBusyState(false);
+                _videoGrid.Refresh();
+                SaveCurrentState();
+            });
+        }
+    }
+
+    public void RunDeleteTrailers(IReadOnlyList<VideoEntry>? targetVideos = null)
+    {
+        if (_isGenerating)
+        {
+            return;
+        }
+
+        _videoGrid.EndEdit();
+        var candidates = (targetVideos ?? GetDeleteTargetVideos(preferSelectedGridRows: false)).ToList();
+        if (candidates.Count == 0)
+        {
+            MessageBox.Show(this, "No trailer files found to delete for the selected video(s).", "Delete Trailers", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            this,
+            $"Are you sure you want to delete {candidates.Count} trailer file(s)?\n\nThis will permanently remove the trailer files from disk.",
+            "Confirm Trailer Deletion",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+
+        if (confirm != DialogResult.Yes)
+        {
+            return;
+        }
+
+        int deletedCount = 0;
+        int failedCount = 0;
+
+        foreach (var entry in candidates)
+        {
+            try
+            {
+                if (File.Exists(entry.TrailerPath))
+                {
+                    File.Delete(entry.TrailerPath);
+                }
+
+                entry.HasTrailer = false;
+                entry.WasGenerated = false;
+                entry.StatusMessage = "Trailer Deleted";
+                entry.NotifyStatusChanged();
+                deletedCount++;
+                AppendLog($"Deleted trailer for '{entry.FileName}': {entry.TrailerPath}");
+            }
+            catch (Exception ex)
+            {
+                failedCount++;
+                AppendLog($"Failed to delete trailer for '{entry.FileName}': {ex.Message}");
+            }
+        }
+
+        _videoGrid.Refresh();
+        SaveCurrentState();
+        _statusLabel.Text = $"Deleted {deletedCount} trailer(s)" + (failedCount > 0 ? $", {failedCount} failed." : ".");
+        AppendLog($"=== Trailer deletion complete: {deletedCount} deleted, {failedCount} failed. ===");
     }
 
     private void OnResetToAutoButtonClick(object? sender, EventArgs e)
@@ -1512,7 +1822,23 @@ public sealed class MainForm : Form
 
     private void OnVideoGridCellMouseDown(object? sender, DataGridViewCellMouseEventArgs e)
     {
-        if (_isGenerating || e.ColumnIndex != 0 || e.RowIndex < 0 || e.RowIndex >= _videos.Count || e.Button != MouseButtons.Left)
+        if (_isGenerating || e.RowIndex < 0 || e.RowIndex >= _videos.Count)
+        {
+            return;
+        }
+
+        if (e.Button == MouseButtons.Right)
+        {
+            if (!_videoGrid.Rows[e.RowIndex].Selected)
+            {
+                _videoGrid.ClearSelection();
+                _videoGrid.Rows[e.RowIndex].Selected = true;
+            }
+            _videoGrid.CurrentCell = _videoGrid.Rows[e.RowIndex].Cells[Math.Max(0, e.ColumnIndex)];
+            return;
+        }
+
+        if (e.ColumnIndex != 0 || e.Button != MouseButtons.Left)
         {
             return;
         }
