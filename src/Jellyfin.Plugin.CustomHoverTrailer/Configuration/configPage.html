@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Custom Hover Trailer</title>
+</head>
+<body>
+    <div id="CustomHoverTrailerConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox,emby-select">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="CustomHoverTrailerConfigForm">
+                    <div class="sectionTitleContainer flex align-items-center">
+                        <h2 class="sectionTitle">Custom Hover Trailer Settings</h2>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="EnableHoverPreviews" type="checkbox" is="emby-checkbox" />
+                            <span>Enable PC Mouse Hover Previews</span>
+                        </label>
+                        <div class="fieldDescription">
+                            On computers with a mouse, plays the video preview directly inside the hovered movie/series poster card.
+                        </div>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="EnableTvFocusPreviews" type="checkbox" is="emby-checkbox" />
+                            <span>Enable TV / Remote / D-Pad Card Selection Previews</span>
+                        </label>
+                        <div class="fieldDescription">
+                            On TVs and remote/keyboard navigation, automatically plays the trailer inside the currently selected/focused card.
+                        </div>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="EnableMobileCenterViewportPreviews" type="checkbox" is="emby-checkbox" />
+                            <span>Enable Phone / Touchscreen Center-of-Screen Auto-Previews</span>
+                        </label>
+                        <div class="fieldDescription">
+                            On phones and tablets, automatically plays the trailer on the card closest to the center of the screen when scrolling stops.
+                        </div>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="EnableMobileSwipeToPlay" type="checkbox" is="emby-checkbox" />
+                            <span>Enable Phone Left-to-Right Swipe on Movie Poster to Play / Switch Trailer</span>
+                        </label>
+                        <div class="fieldDescription">
+                            Swipe from left to right across any movie poster card on your phone to immediately play its trailer (and switch from any currently playing trailer). Allows playing cards near the very top or bottom of the page that never reach the center of the screen!
+                        </div>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="MobileSwipeOnlyMode" type="checkbox" is="emby-checkbox" />
+                            <span>Phone Swipe-Only Mode (Only Play Trailers on Phone When Swiped Left-to-Right)</span>
+                        </label>
+                        <div class="fieldDescription">
+                            When enabled, disables automatic center-of-screen playback on phones so trailers only play when you swipe left-to-right on a card.
+                        </div>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="CycleAllAvailableTrailers" type="checkbox" is="emby-checkbox" />
+                            <span>Cycle Through All Available Trailers in Priority Order</span>
+                        </label>
+                        <div class="fieldDescription">
+                            Instead of repeating only the first available trailer, cycles through every available trailer for the movie in your selected priority order (e.g., Local Trailer → Remote MP4 → YouTube #1 → YouTube #2 → back to first).
+                        </div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="HoverDelayMs">Hover Delay (milliseconds)</label>
+                        <input id="HoverDelayMs" type="number" is="emby-input" min="100" max="3000" step="50" />
+                        <div class="fieldDescription">Time to wait after hovering over a card before starting the video preview (default: 400ms).</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="MaxPreviewDurationSeconds">Max Preview Duration (seconds)</label>
+                        <input id="MaxPreviewDurationSeconds" type="number" is="emby-input" min="5" max="300" step="5" />
+                        <div class="fieldDescription">Length of the preview loop in seconds (default: 30s).</div>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="StartMuted" type="checkbox" is="emby-checkbox" />
+                            <span>Start Previews Muted</span>
+                        </label>
+                        <div class="fieldDescription">Recommended so browsers allow immediate autoplay on hover.</div>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="ShowMuteButton" type="checkbox" is="emby-checkbox" />
+                            <span>Show Mute / Unmute Toggle Icon in Card Corner</span>
+                        </label>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="ExpandCardToWidescreenInPlace" type="checkbox" is="emby-checkbox" />
+                            <span>Slightly Widen Hovered Card in Place for 16:9 Trailers</span>
+                        </label>
+                        <div class="fieldDescription">
+                            When unchecked, 16:9 trailers are letterboxed (object-fit: contain) strictly within the original poster dimensions.
+                        </div>
+                    </div>
+
+                    <hr />
+                    <h3 class="sectionTitle">Global Trailer Source Priority &amp; Toggles</h3>
+
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="DefaultSourcePriorityOrder">Default Source Priority Order (All Libraries)</label>
+                        <select id="DefaultSourcePriorityOrder" is="emby-select" class="emby-select-withcolor emby-select">
+                            <option value="LocalDisk,RemoteMp4,YouTube">1. Local File (*-trailer.mp4) → 2. Remote MP4 URL → 3. YouTube</option>
+                            <option value="LocalDisk,YouTube,RemoteMp4">1. Local File (*-trailer.mp4) → 2. YouTube → 3. Remote MP4 URL</option>
+                            <option value="YouTube,LocalDisk,RemoteMp4">1. YouTube → 2. Local File (*-trailer.mp4) → 3. Remote MP4 URL</option>
+                            <option value="YouTube,RemoteMp4,LocalDisk">1. YouTube → 2. Remote MP4 URL → 3. Local File (*-trailer.mp4)</option>
+                            <option value="RemoteMp4,LocalDisk,YouTube">1. Remote MP4 URL → 2. Local File (*-trailer.mp4) → 3. YouTube</option>
+                            <option value="RemoteMp4,YouTube,LocalDisk">1. Remote MP4 URL → 2. YouTube → 3. Local File (*-trailer.mp4)</option>
+                        </select>
+                        <div class="fieldDescription">
+                            Choose which trailer source should be checked first by default when hovering over a card.
+                        </div>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="EnableLocalDiskTrailers" type="checkbox" is="emby-checkbox" />
+                            <span>Enable Local Same-Folder Trailers (*name_of_video*-trailer.mp4)</span>
+                        </label>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="EnableRemoteMp4Urls" type="checkbox" is="emby-checkbox" />
+                            <span>Enable Direct Remote .mp4 / .webm URLs</span>
+                        </label>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="EnableYouTubeFallback" type="checkbox" is="emby-checkbox" />
+                            <span>Enable YouTube Trailers (Resolved via YoutubeExplode)</span>
+                        </label>
+                    </div>
+
+                    <hr />
+                    <h3 class="sectionTitle">Per-Library Trailer Priority Overrides</h3>
+                    <div class="fieldDescription" style="margin-bottom: 1em;">
+                        Configure a different trailer priority order for specific Jellyfin libraries (e.g., YouTube first for Movies, Local File first for Home Videos / Anime).
+                    </div>
+
+                    <div id="LibraryPriorityOverridesContainer" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+                        <div class="fieldDescription">Loading Jellyfin libraries...</div>
+                    </div>
+
+                    <hr />
+                    <h3 class="sectionTitle">Diagnostics &amp; Script Injection</h3>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="EnableBrowserConsoleLogging" type="checkbox" is="emby-checkbox" />
+                            <span>Enable Detailed Browser Console Logging (F12 Console)</span>
+                        </label>
+                        <div class="fieldDescription">
+                            Logs resolution steps, library priority used, stream URLs, and fallback/errors in the browser DevTools console. C# DLL logs are written to <code>C:\ProgramData\Jellyfin\ServerData\plugins\CustomHoverTrailer\CustomHoverTrailer.log</code> and viewable at <a href="/CustomHoverTrailer/Logs" target="_blank">/CustomHoverTrailer/Logs</a>.
+                        </div>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="AutoInjectClientScript" type="checkbox" is="emby-checkbox" />
+                            <span>Automatically Inject Hover Script into Jellyfin Web (index.html / File Transformation)</span>
+                        </label>
+                    </div>
+
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                            <span>Save</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <script type="text/javascript">
+            (function () {
+                var pluginId = '9b7e4c12-6d38-4f2a-8c1e-5a9d7b3e1f40';
+                var page = document.querySelector('#CustomHoverTrailerConfigPage');
+                var form = document.querySelector('#CustomHoverTrailerConfigForm');
+                var librariesContainer = page.querySelector('#LibraryPriorityOverridesContainer');
+
+                var PRIORITY_OPTIONS = [
+                    { value: 'LocalDisk,RemoteMp4,YouTube', label: '1. Local File (*-trailer.mp4) → 2. Remote MP4 URL → 3. YouTube' },
+                    { value: 'LocalDisk,YouTube,RemoteMp4', label: '1. Local File (*-trailer.mp4) → 2. YouTube → 3. Remote MP4 URL' },
+                    { value: 'YouTube,LocalDisk,RemoteMp4', label: '1. YouTube → 2. Local File (*-trailer.mp4) → 3. Remote MP4 URL' },
+                    { value: 'YouTube,RemoteMp4,LocalDisk', label: '1. YouTube → 2. Remote MP4 URL → 3. Local File (*-trailer.mp4)' },
+                    { value: 'RemoteMp4,LocalDisk,YouTube', label: '1. Remote MP4 URL → 2. Local File (*-trailer.mp4) → 3. YouTube' },
+                    { value: 'RemoteMp4,YouTube,LocalDisk', label: '1. Remote MP4 URL → 2. YouTube → 3. Local File (*-trailer.mp4)' }
+                ];
+
+                function normalizeId(id) {
+                    return (id || '').replace(/-/g, '').trim().toLowerCase();
+                }
+
+                function renderLibraryOverrides(libraries, savedOverrides, defaultPriority) {
+                    librariesContainer.innerHTML = '';
+
+                    if (!libraries || libraries.length === 0) {
+                        librariesContainer.innerHTML = '<div class="fieldDescription">No Jellyfin libraries found.</div>';
+                        return;
+                    }
+
+                    libraries.forEach(function (lib) {
+                        var libId = normalizeId(lib.Id || lib.id);
+                        var libName = lib.Name || lib.name || 'Library';
+                        var collectionType = lib.CollectionType || lib.collectionType || 'general';
+                        var locations = (lib.Locations || lib.locations || []).join(', ');
+
+                        var existing = (savedOverrides || []).find(function (o) {
+                            return normalizeId(o.LibraryId) === libId || (o.LibraryName && o.LibraryName.toLowerCase() === libName.toLowerCase());
+                        });
+
+                        var useCustom = existing ? Boolean(existing.UseCustomPriority) : false;
+                        var priorityValue = (existing && existing.SourcePriorityOrder) ? existing.SourcePriorityOrder : (defaultPriority || 'LocalDisk,RemoteMp4,YouTube');
+
+                        var row = document.createElement('div');
+                        row.className = 'cht-library-override-row';
+                        row.setAttribute('data-lib-id', libId);
+                        row.setAttribute('data-lib-name', libName);
+                        row.style.cssText = 'padding: 12px 14px; border-radius: 6px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;';
+
+                        var leftCol = document.createElement('div');
+                        leftCol.style.cssText = 'flex: 1 1 260px;';
+
+                        var titleDiv = document.createElement('div');
+                        titleDiv.style.cssText = 'font-weight: 600; font-size: 1.05em; margin-bottom: 4px;';
+                        titleDiv.textContent = libName + ' (' + collectionType + ')';
+
+                        var pathDiv = document.createElement('div');
+                        pathDiv.className = 'fieldDescription';
+                        pathDiv.style.cssText = 'font-size: 0.85em; opacity: 0.75;';
+                        pathDiv.textContent = locations || ('ID: ' + libId);
+
+                        leftCol.appendChild(titleDiv);
+                        leftCol.appendChild(pathDiv);
+
+                        var rightCol = document.createElement('div');
+                        rightCol.style.cssText = 'flex: 2 1 380px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px;';
+
+                        var modeSelect = document.createElement('select');
+                        modeSelect.className = 'emby-select-withcolor emby-select cht-lib-mode-select';
+                        modeSelect.style.cssText = 'width: auto; min-width: 210px; padding: 6px 10px;';
+
+                        var optDefault = document.createElement('option');
+                        optDefault.value = 'default';
+                        optDefault.textContent = 'Use Global Default Priority';
+                        optDefault.selected = !useCustom;
+
+                        var optCustom = document.createElement('option');
+                        optCustom.value = 'custom';
+                        optCustom.textContent = 'Custom Priority for this Library:';
+                        optCustom.selected = useCustom;
+
+                        modeSelect.appendChild(optDefault);
+                        modeSelect.appendChild(optCustom);
+
+                        var orderSelect = document.createElement('select');
+                        orderSelect.className = 'emby-select-withcolor emby-select cht-lib-order-select';
+                        orderSelect.style.cssText = 'flex: 1 1 280px; padding: 6px 10px;';
+                        orderSelect.disabled = !useCustom;
+                        orderSelect.style.opacity = useCustom ? '1' : '0.5';
+
+                        PRIORITY_OPTIONS.forEach(function (opt) {
+                            var optionEl = document.createElement('option');
+                            optionEl.value = opt.value;
+                            optionEl.textContent = opt.label;
+                            if (opt.value.toLowerCase() === priorityValue.toLowerCase()) {
+                                optionEl.selected = true;
+                            }
+                            orderSelect.appendChild(optionEl);
+                        });
+
+                        modeSelect.addEventListener('change', function () {
+                            var isCustom = modeSelect.value === 'custom';
+                            orderSelect.disabled = !isCustom;
+                            orderSelect.style.opacity = isCustom ? '1' : '0.5';
+                        });
+
+                        rightCol.appendChild(modeSelect);
+                        rightCol.appendChild(orderSelect);
+
+                        row.appendChild(leftCol);
+                        row.appendChild(rightCol);
+                        librariesContainer.appendChild(row);
+                    });
+                }
+
+                page.addEventListener('pageshow', function () {
+                    Dashboard.showLoadingMsg();
+                    var baseUrl = ApiClient.serverAddress().replace(/\/$/, '');
+
+                    Promise.all([
+                        ApiClient.getPluginConfiguration(pluginId),
+                        fetch(baseUrl + '/CustomHoverTrailer/Libraries', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; })
+                    ]).then(function (results) {
+                        var config = results[0];
+                        var libraries = results[1];
+
+                        page.querySelector('#EnableHoverPreviews').checked = config.EnableHoverPreviews !== false;
+                        page.querySelector('#EnableTvFocusPreviews').checked = config.EnableTvFocusPreviews !== false;
+                        page.querySelector('#EnableMobileCenterViewportPreviews').checked = config.EnableMobileCenterViewportPreviews !== false;
+                        page.querySelector('#EnableMobileSwipeToPlay').checked = config.EnableMobileSwipeToPlay !== false;
+                        page.querySelector('#MobileSwipeOnlyMode').checked = Boolean(config.MobileSwipeOnlyMode);
+                        page.querySelector('#CycleAllAvailableTrailers').checked = config.CycleAllAvailableTrailers !== false;
+                        page.querySelector('#HoverDelayMs').value = config.HoverDelayMs || 400;
+                        page.querySelector('#MaxPreviewDurationSeconds').value = config.MaxPreviewDurationSeconds || 30;
+                        page.querySelector('#StartMuted').checked = config.StartMuted;
+                        page.querySelector('#ShowMuteButton').checked = config.ShowMuteButton;
+                        page.querySelector('#ExpandCardToWidescreenInPlace').checked = config.ExpandCardToWidescreenInPlace;
+                        page.querySelector('#DefaultSourcePriorityOrder').value = config.DefaultSourcePriorityOrder || 'LocalDisk,RemoteMp4,YouTube';
+                        page.querySelector('#EnableLocalDiskTrailers').checked = config.EnableLocalDiskTrailers;
+                        page.querySelector('#EnableRemoteMp4Urls').checked = config.EnableRemoteMp4Urls;
+                        page.querySelector('#EnableYouTubeFallback').checked = config.EnableYouTubeFallback;
+                        page.querySelector('#EnableBrowserConsoleLogging').checked = config.EnableBrowserConsoleLogging !== false;
+                        page.querySelector('#AutoInjectClientScript').checked = config.AutoInjectClientScript;
+
+                        renderLibraryOverrides(libraries, config.LibraryPriorityOverrides || [], config.DefaultSourcePriorityOrder);
+                        Dashboard.hideLoadingMsg();
+                    });
+                });
+
+                form.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                        config.EnableHoverPreviews = page.querySelector('#EnableHoverPreviews').checked;
+                        config.EnableTvFocusPreviews = page.querySelector('#EnableTvFocusPreviews').checked;
+                        config.EnableMobileCenterViewportPreviews = page.querySelector('#EnableMobileCenterViewportPreviews').checked;
+                        config.EnableMobileSwipeToPlay = page.querySelector('#EnableMobileSwipeToPlay').checked;
+                        config.MobileSwipeOnlyMode = page.querySelector('#MobileSwipeOnlyMode').checked;
+                        config.CycleAllAvailableTrailers = page.querySelector('#CycleAllAvailableTrailers').checked;
+                        config.HoverDelayMs = parseInt(page.querySelector('#HoverDelayMs').value, 10) || 400;
+                        config.MaxPreviewDurationSeconds = parseInt(page.querySelector('#MaxPreviewDurationSeconds').value, 10) || 30;
+                        config.StartMuted = page.querySelector('#StartMuted').checked;
+                        config.ShowMuteButton = page.querySelector('#ShowMuteButton').checked;
+                        config.ExpandCardToWidescreenInPlace = page.querySelector('#ExpandCardToWidescreenInPlace').checked;
+                        config.DefaultSourcePriorityOrder = page.querySelector('#DefaultSourcePriorityOrder').value || 'LocalDisk,RemoteMp4,YouTube';
+                        config.EnableLocalDiskTrailers = page.querySelector('#EnableLocalDiskTrailers').checked;
+                        config.EnableRemoteMp4Urls = page.querySelector('#EnableRemoteMp4Urls').checked;
+                        config.EnableYouTubeFallback = page.querySelector('#EnableYouTubeFallback').checked;
+                        config.EnableBrowserConsoleLogging = page.querySelector('#EnableBrowserConsoleLogging').checked;
+                        config.AutoInjectClientScript = page.querySelector('#AutoInjectClientScript').checked;
+
+                        var overrides = [];
+                        var rows = librariesContainer.querySelectorAll('.cht-library-override-row');
+                        rows.forEach(function (row) {
+                            var modeSelect = row.querySelector('.cht-lib-mode-select');
+                            var orderSelect = row.querySelector('.cht-lib-order-select');
+                            overrides.push({
+                                LibraryId: row.getAttribute('data-lib-id') || '',
+                                LibraryName: row.getAttribute('data-lib-name') || '',
+                                UseCustomPriority: modeSelect && modeSelect.value === 'custom',
+                                SourcePriorityOrder: orderSelect ? orderSelect.value : 'LocalDisk,RemoteMp4,YouTube'
+                            });
+                        });
+                        config.LibraryPriorityOverrides = overrides;
+
+                        ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
+                            Dashboard.processPluginConfigurationUpdateResult(result);
+                        });
+                    });
+                    return false;
+                });
+            })();
+        </script>
+    </div>
+</body>
+</html>
